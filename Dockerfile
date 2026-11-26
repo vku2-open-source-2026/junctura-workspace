@@ -1,26 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Junctura Contributors
 # SPDX-License-Identifier: Apache-2.0
-# Build the portal from the repository root (the bundle aliases ../ui and ../contracts):
-#   docker build -f portal/Dockerfile -t junctura-health-portal .
-# Run it (see portal/compose.yaml): the container serves the static app and proxies
-# /v1/* and /identity/* to the Junctura stack, so the browser only talks to
-# one origin and no CORS is needed.
 
 FROM node:24-alpine AS build
-WORKDIR /app
-COPY ui/package.json ui/package-lock.json ui/
-COPY ui/src ui/src
-COPY contracts/capabilities contracts/capabilities
-COPY contracts/index.mjs contracts/index.d.ts contracts/package.json contracts/
-COPY demo/plan.mjs demo/
-COPY workflows workflows/
-COPY seed/data/accounts.json seed/data/
-COPY portal/package.json portal/package-lock.json portal/
-COPY portal/ portal/
-RUN npm --prefix ui ci --ignore-scripts \
- && npm --prefix portal ci --ignore-scripts \
- && npm --prefix portal run build
+WORKDIR /workspace
+COPY .junctura-health/ui/package.json .junctura-health/ui/package-lock.json .junctura-health/ui/
+RUN npm --prefix .junctura-health/ui ci --ignore-scripts
+COPY app/package.json app/package-lock.json app/
+RUN npm --prefix app ci --ignore-scripts
+
+COPY .junctura-health/ui/src/ .junctura-health/ui/src/
+COPY .junctura-health/contracts/ .junctura-health/contracts/
+COPY .junctura-health/demo/plan.mjs .junctura-health/demo/
+COPY .junctura-health/workflows/ .junctura-health/workflows/
+COPY .junctura-health/seed/data/accounts.json .junctura-health/seed/data/
+COPY app/ app/
+RUN npm --prefix app run build
 
 FROM caddy:2-alpine
-COPY portal/Caddyfile /etc/caddy/Caddyfile
-COPY --from=build /app/portal/dist /srv/portal
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /workspace/app/dist /srv/portal

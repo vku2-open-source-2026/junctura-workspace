@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { APPS } from "@junctura/health-demo/plan";
+import { APPS } from "../src/health-demo-apps";
 import { CONTRACTS } from "@junctura/health-contracts";
 import { PortalApp } from "../src/App";
 import { auth } from "../src/auth";

@@ -10,7 +10,7 @@
 
 import type { Schema } from "@junctura/health-contracts";
 import { CONTRACTS } from "@junctura/health-contracts";
-import { APPS } from "@junctura/health-demo/plan";
+import { APPS } from "../health-demo-apps";
 import { appName } from "../catalog";
 import { purposeLabel } from "../strings";
 import chuyenTuyenXml from "@junctura/health-workflows/chuyen-tuyen.bpmn20.xml?raw";

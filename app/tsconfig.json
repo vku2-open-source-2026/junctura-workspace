@@ -23,13 +23,13 @@
     "baseUrl": ".",
     "paths": {
       "@junctura/health-ui": [
-        "../ui/src/index.ts"
+        "../.junctura-health/ui/src/index.ts"
       ],
       "@junctura/health-contracts": [
-        "../contracts/index.d.ts"
+        "../.junctura-health/contracts/index.d.ts"
       ],
       "@junctura/health-workflows/*": [
-        "../workflows/*"
+        "../.junctura-health/workflows/*"
       ],
       "react": [
         "./node_modules/@types/react/index.d.ts"

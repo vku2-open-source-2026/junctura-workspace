@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Junctura Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Send only the source and demo inputs required to build the two images.
+**
+!Caddyfile
+!app/index.html
+!app/package*.json
+!app/tsconfig.json
+!app/vite.config.ts
+!app/public/**
+!app/src/**
+!server/*.mjs
+!server/package*.json
+!.junctura-health/ui/package*.json
+!.junctura-health/ui/src/**
+!.junctura-health/contracts/index.*
+!.junctura-health/contracts/package.json
+!.junctura-health/contracts/capabilities/**
+!.junctura-health/demo/plan.mjs
+!.junctura-health/workflows/*.bpmn20.xml
+!.junctura-health/seed/data/accounts.json
+app/public/config.json
+**/.env
+**/.env.*

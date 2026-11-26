@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 // Staff identity of the portal backend: which facility a signed-in demo account
-// belongs to. Same role-to-facility table as portal/src/session.ts; patients are
+// belongs to. Same role-to-facility table as app/src/session.ts; patients are
 // never staff, anything unknown maps to null.
 import { readFileSync } from "node:fs";
 
-const accountsUrl = new URL("../../seed/data/accounts.json", import.meta.url);
+const accountsUrl = new URL("../.junctura-health/seed/data/accounts.json", import.meta.url);
 
 const FACILITY_BY_ROLE = Object.freeze({
   "clinic-staff": "tram-y-te",

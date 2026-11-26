@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import accountsData from "../../seed/data/accounts.json";
+import accountsData from "../../.junctura-health/seed/data/accounts.json";
 
 /**
  * Staff identity for the signed-in workspace: which facility a signed-in demo account

@@ -7,7 +7,7 @@
  */
 
 import { CONTRACTS } from "@junctura/health-contracts";
-import { APPS } from "@junctura/health-demo/plan";
+import { APPS } from "./health-demo-apps";
 
 export interface CatalogEntry {
   slug: string;

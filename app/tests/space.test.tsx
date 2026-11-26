@@ -3,7 +3,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTRACTS } from "@junctura/health-contracts";
-import { APPS } from "@junctura/health-demo/plan";
+import { APPS } from "../src/health-demo-apps";
 import chuyenTuyenXml from "@junctura/health-workflows/chuyen-tuyen.bpmn20.xml?raw";
 import xacMinhChiPhiXml from "@junctura/health-workflows/xac-minh-chi-phi.bpmn20.xml?raw";
 import xacMinhDonThuocXml from "@junctura/health-workflows/xac-minh-don-thuoc.bpmn20.xml?raw";

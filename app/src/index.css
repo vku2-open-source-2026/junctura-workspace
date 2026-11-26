@@ -7,6 +7,6 @@
  * The shared styles.css brings Tailwind (auto sources disabled) and the token theme and
  * scans ui/src; the @source below adds the portal's own files to the scan.
  */
-@import "../../ui/src/styles.css";
-@import "../../ui/src/fonts.css";
+@import "../../.junctura-health/ui/src/styles.css";
+@import "../../.junctura-health/ui/src/fonts.css";
 @source "./";

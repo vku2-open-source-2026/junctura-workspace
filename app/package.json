@@ -5,11 +5,11 @@
   "description": "Cổng Junctura Health, the GUI of Layer 2: public pages of the shared health space and the signed-in workspace (H work, P cases, D operations) where facility staff and the health department work on Junctura.",
   "license": "Apache-2.0",
   "type": "module",
-  "homepage": "https://github.com/vku2-open-source-2026/junctura-health/tree/main/portal",
+  "homepage": "https://github.com/vku2-open-source-2026/junctura-workspace/tree/main/app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vku2-open-source-2026/junctura-health.git",
-    "directory": "portal"
+    "url": "git+https://github.com/vku2-open-source-2026/junctura-workspace.git",
+    "directory": "app"
   },
   "engines": {
     "node": ">=24 <25"
