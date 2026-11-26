@@ -70,7 +70,7 @@ Ví dụ `health.junctura.studio`, cùng máy với stack Junctura và Caddy h�
 
    ```caddy
    health.junctura.studio {
-   	reverse_proxy 127.0.0.1:5180
+     reverse_proxy 127.0.0.1:5180
    }
    ```
 
