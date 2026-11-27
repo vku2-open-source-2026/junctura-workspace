@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Junctura Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+.junctura-health/
+.junctura/
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+config.json

@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 Junctura Contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Verify REUSE/SPDX license metadata
+        run: |
+          python -m pip install -r requirements-reuse.txt
+          reuse lint
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Read the pinned Junctura Health revision
+        id: health
+        run: |
+          revision=$(cat .junctura-health-version)
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$revision" >> "$GITHUB_OUTPUT"
+      - name: Check out Junctura Health build inputs
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: vku2-open-source-2026/junctura-health
+          ref: ${{ steps.health.outputs.ref }}
+          path: .junctura-health
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ui/
+            /contracts/
+            /demo/plan.mjs
+            /workflows/
+            /seed/data/accounts.json
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            .junctura-health/ui/package-lock.json
+            server/package-lock.json
+            app/package-lock.json
+      - name: Install and test the backend
+        run: |
+          npm --prefix server ci --prefer-offline --no-audit --no-fund
+          npm --prefix server test
+      - name: Install the shared UI and frontend dependencies
+        run: |
+          npm --prefix .junctura-health/ui ci --prefer-offline --no-audit --no-fund
+          npm --prefix app ci --prefer-offline --no-audit --no-fund
+      - name: Typecheck, test and build the frontend
+        run: |
+          npm --prefix app run typecheck
+          npm --prefix app test
+          npm --prefix app run build
