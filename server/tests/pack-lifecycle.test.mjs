@@ -10,8 +10,9 @@
 // identical replay, 409 idempotency_conflict, 409
 // deployment_pending_reconciliation, 503 workflow_unavailable). The real merged
 // Education pack is installed from throwaway fixture copies; no credentials,
-// no shared infrastructure. Explicit selection/activation/retirement is
-// deliberately absent from this slice and is not tested here.
+// no shared infrastructure. The install slice's explicit
+// selection/activation/retirement lives in pack-selection.test.mjs; here the
+// listing only exposes the (absent) selection alongside the installed state.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -723,7 +724,7 @@ test("inspection distinguishes an absent collection, incomplete and complete ins
   t.after(() => mock.close());
   const config = lifecycleConfig(mock);
   const fresh = await listInstalledPacks({ config, attempts: 3, delayMs: 1 });
-  assert.deepEqual(fresh, { outcome: "listed", collection: "absent", packs: [] },
+  assert.deepEqual(fresh, { outcome: "listed", collection: "absent", selection: null, packs: [] },
     "a fresh owner scope is an empty listing, not an error");
 
   const { pack, cleanup } = await withPackCopy();

@@ -1,16 +1,43 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 // Pack lifecycle execution for issue #12: real install and inspection of
-// Workspace industry packs on a Junctura DX-OS stack. Explicit activation and
-// safe retirement are deliberately NOT part of this slice: an independent
-// review of the earlier candidate found a genuine unsafe cross-record
-// selection/retirement race (a deterministic lock idempotency key replayable
-// across processes, and a post-commit repair able to clear an unrelated later
-// selection), so every selection/activation/retirement code path was removed
-// here. The next slice is expected to implement transaction-backed selection
-// and retire over the pinned /v2/data:batch operation with the chosen active
-// state protected; until then nothing selects or retires, and this module is
-// the install-state foundation.
+// Workspace industry packs on a Junctura DX-OS stack, plus the closing slice —
+// durable selection (activate, upgrade/switch) and safe retirement. The
+// previously rejected record-lock + post-write repair approach is NOT used:
+// clients sharing credentials could replay the same lock, and a post-commit
+// repair could clear an unrelated later selection, so no unscoped lock and no
+// post-commit repair exists here.
+//
+// Selection state lives in one app-scoped DX-OS record collection,
+// `ws_pack_selections`, holding exactly one record at the stable unique key
+// `active`. It is bootstrapped with an EMPTY pointer by a regular by-key
+// creation: a racing creation cannot overwrite (a by-key PUT without If-Match
+// against an existing record is 428), so exactly one `active` record exists.
+// The selection is read through a small UNFILTERED list so a read-only listing
+// works on a fresh owner whose schema (and index) does not exist yet — a
+// filtered query there is `400 invalid_query` on the real Core — and existing
+// state is always read back with its CURRENT strong ETag, never taken from a
+// creation receipt (a same-key replay can return the original empty pointer
+// and ETag after a later selection committed). Selecting and retiring each
+// commit ONE atomic `POST /v2/data:batch` (the pinned 1–50 operation
+// transaction with strong per-record ETags, applied in request order and
+// rolled back entirely on any failure): selecting replaces only the pointer
+// and re-validates the target
+// ws_packs version with a same-data replacement under the ETag of the CURRENT
+// per-record read, so only a still-available complete version can be selected;
+// retiring pins the SAME observed pointer ETag with a same-data replacement
+// and marks only the target ws_packs record `retired`, first re-registering
+// the current (retired-capable) ws_packs schema as the record-retaining
+// migration for owner scopes registered by the install slice. Because both
+// operations carry the same observed pointer ETag, a simultaneous select and
+// retire cannot interleave —
+// the loser gets 412 and its whole batch rolls back. Stale ETags, uncertain
+// outcomes and receipt conflicts are resolved only by rerunning the exact same
+// command: the idempotency key of every batch is derived deterministically
+// from the observed preconditions, so the same observation is the same key and
+// replays the recorded receipt, and a fresh key is never picked
+// automatically. The commit marker is self-evident: the pointer of the one
+// `active` record is the whole outcome.
 //
 // The publication contract is the one independently verified in Junctura DX-OS
 // PR #113 (merged at bb6233f86633a42e1e1e5f58812a53064e6cd9b0; release
@@ -56,6 +83,9 @@ import { createJuncturaClient, JuncturaError } from "@junctura/server-client";
 
 /** DX-OS record collection holding one durable reservation per installed pack version. */
 export const WS_PACKS_COLLECTION = "ws_packs";
+
+/** DX-OS record collection holding the one app-scoped active pack selection. */
+export const WS_PACK_SELECTIONS_COLLECTION = "ws_pack_selections";
 
 /**
  * The documented ws_packs collection schema. Field names follow the pinned
@@ -119,6 +149,35 @@ export const WS_PACKS_SCHEMA = Object.freeze({
   sensitive: [],
 });
 
+/**
+ * The documented ws_pack_selections collection schema: exactly one record at
+ * the stable key `active` (the app's current pack selection) whose pointer
+ * fields are empty strings until a version is selected. Same pinned regex
+ * subset as ws_packs; the optional-first-character / `{0,n}` forms keep the
+ * empty pointer representable without grouping or alternation, and the
+ * version field re-declares no length bound for the same manifest-schema
+ * reason as ws_packs.
+ */
+export const WS_PACK_SELECTIONS_SCHEMA = Object.freeze({
+  schema: Object.freeze({
+    type: "object",
+    required: ["key", "packId", "version", "contentHash"],
+    properties: {
+      key: { type: "string", pattern: "^active$" },
+      packId: { type: "string", pattern: "^[a-z]?[a-z0-9-]{0,62}$" },
+      version: { type: "string", pattern: "^[0-9A-Za-z.-]*$" },
+      contentHash: { type: "string", pattern: "^[0-9a-f]{0,64}$" },
+    },
+  }),
+  indexed: ["key", "packId", "version"],
+  uniqueKey: "key",
+  searchable: [],
+  sensitive: [],
+});
+
+/** The stable unique key of the one app-scoped active selection record. */
+export const SELECTION_RECORD_KEY = "active";
+
 /** Stable machine-readable codes of `PackLifecycleError`. */
 export const PackLifecycleErrorCode = Object.freeze({
   LIFECYCLE_CONFIG_MISSING: "LIFECYCLE_CONFIG_MISSING",
@@ -130,6 +189,10 @@ export const PackLifecycleErrorCode = Object.freeze({
   RECORD_IDEMPOTENCY_CONFLICT: "RECORD_IDEMPOTENCY_CONFLICT",
   RECORD_SCOPE_MISMATCH: "RECORD_SCOPE_MISMATCH",
   RECORD_PRECONDITION: "RECORD_PRECONDITION",
+  SELECTION_TARGET_INVALID: "SELECTION_TARGET_INVALID",
+  SELECTION_PRECONDITION: "SELECTION_PRECONDITION",
+  RETIRE_SELECTED: "RETIRE_SELECTED",
+  RETIRE_PRECONDITION: "RETIRE_PRECONDITION",
   DEFINITION_CONFLICT: "DEFINITION_CONFLICT",
   DEFINITION_POLICY_INVALID: "DEFINITION_POLICY_INVALID",
   PENDING_NOT_SETTLED: "PENDING_NOT_SETTLED",
@@ -423,14 +486,15 @@ async function operatorRequest(config, path, { method = "GET", json, headers = {
 }
 
 /**
- * Registers the ws_packs collection schema with the backend identity.
- * Registration is desired-state (replaying the identical PUT is safe); the
- * owner's index only exists after this, so it always precedes reading or
- * writing pack records.
+ * Registers one collection schema with the backend identity. Registration is
+ * desired-state (replaying the identical PUT is safe); the owner's index only
+ * exists after this, so it always precedes reading or writing that
+ * collection's records. Re-registering a changed schema is the pinned
+ * record-retaining migration Core performs in one transaction.
  */
-async function registerSchema(junctura, schema, { what }) {
+async function registerSchema(junctura, collection, schema, { what }) {
   try {
-    await junctura.request(`/v2/data-schemas/${WS_PACKS_COLLECTION}`, { method: "PUT", json: schema });
+    await junctura.request(`/v2/data-schemas/${collection}`, { method: "PUT", json: schema });
   } catch (error) {
     throw upstreamError(`registering ${what}`, error);
   }
@@ -484,6 +548,21 @@ async function readPackRecords(junctura, packId) {
   }
   throw new PackLifecycleError(CODE.RECORD_SCOPE_MISMATCH,
     { message: `more than ${20 * 100} recorded versions of pack ${packId}; refusing to select beyond a bounded stable page set` });
+}
+
+/**
+ * The ws_packs records of one pack id for selection and retirement: a
+ * collection that does not exist yet (a fresh owner scope) is simply no
+ * records — the caller refuses the operation as an invalid target — while any
+ * other read failure is reported, never read as "nothing installed".
+ */
+async function readPackRecordsOrEmpty(junctura, packId) {
+  try {
+    return await readPackRecords(junctura, packId);
+  } catch (error) {
+    if (error instanceof PackLifecycleError && error.cause instanceof JuncturaError && error.cause.status === 404) return [];
+    throw error;
+  }
 }
 
 /** Reads one record by id together with its strong owner ETag. */
@@ -641,7 +720,7 @@ export async function installPack({ plan, config, attempts = 4, delayMs = 250, l
 
   for (const step of steps) {
     if (step.kind === "ws_packs.schema.register") {
-      await registerSchema(junctura, WS_PACKS_SCHEMA, { what: WS_PACKS_COLLECTION });
+      await registerSchema(junctura, WS_PACKS_COLLECTION, WS_PACKS_SCHEMA, { what: WS_PACKS_COLLECTION });
       log(`${WS_PACKS_COLLECTION} schema registered`);
     }
   }
@@ -904,11 +983,12 @@ async function publishDefinition(config, definitionKey, idempotencyKey, xml) {
 /**
  * Admin-readable inspection of the recorded pack state: every ws_packs record
  * of the app-owned collection, read through the backend application with
- * cursor pagination until the end. This is a read-only command — it mutates
- * nothing and never registers the schema. A 404 means the collection does not
- * exist yet (a fresh stack): an empty list, not an error. Any other failure
- * (authorization, transient upstream) is reported instead of being silently
- * read as "nothing installed".
+ * cursor pagination until the end, plus the current active selection from
+ * `ws_pack_selections` when one exists. This is a read-only command — it
+ * mutates nothing and never registers a schema. A 404 means the collection
+ * does not exist yet (a fresh stack): an empty list, not an error. Any other
+ * failure (authorization, transient upstream) is reported instead of being
+ * silently read as "nothing installed".
  */
 export async function listInstalledPacks({ config, log = () => {} }) {
   const junctura = backendClient(config);
@@ -925,7 +1005,7 @@ export async function listInstalledPacks({ config, log = () => {} }) {
     } catch (error) {
       if (error instanceof JuncturaError && error.status === 404 && pages === 0) {
         log(`${WS_PACKS_COLLECTION} does not exist yet (fresh owner scope); nothing is installed`);
-        return { outcome: "listed", collection: "absent", packs: [] };
+        return { outcome: "listed", collection: "absent", selection: null, packs: [] };
       }
       if (error instanceof JuncturaError && classify(error.status) === "transient") {
         throw uncertain(`reading ${WS_PACKS_COLLECTION}: ${error.message}`);
@@ -943,6 +1023,7 @@ export async function listInstalledPacks({ config, log = () => {} }) {
         { message: `more than ${20 * 100} recorded pack versions; refusing to list beyond a bounded stable page set` });
     }
   }
+  const selection = await readActiveSelection(junctura);
   try {
     records.sort((a, b) => (a.packId < b.packId ? -1 : a.packId > b.packId ? 1 : compareVersions(b.version, a.version)));
   } catch {
@@ -952,14 +1033,390 @@ export async function listInstalledPacks({ config, log = () => {} }) {
   return {
     outcome: "listed",
     collection: records.length ? "populated" : "empty",
+    selection,
     packs: records.map(data => ({
       packId: data.packId,
       version: data.version,
       status: data.status,
       contentHash: data.contentHash,
       complete: data.status === "available",
+      selected: selection !== null && data.packId === selection.packId && data.version === selection.version,
       definitions: data.definitions ?? [],
       directory: data.directory ?? null,
     })),
   };
+}
+
+/**
+ * The empty pointer of the bootstrapped `active` record: no version selected.
+ * Every field stays a string so the pinned record schema needs no conditional
+ * validation, and the empty state is exactly "pointerTargetOf → null".
+ */
+const emptyPointerData = () => ({ key: SELECTION_RECORD_KEY, packId: "", version: "", contentHash: "" });
+
+/** The pointer data selecting one installed version — the whole select effect. */
+const pointerDataFor = (packId, version, contentHash) =>
+  ({ key: SELECTION_RECORD_KEY, packId, version, contentHash });
+
+/** The selection a pointer record names; an empty (bootstrapped) pointer is none. */
+const pointerTargetOf = data =>
+  data?.packId ? { packId: data.packId, version: data.version, contentHash: data.contentHash } : null;
+
+/**
+ * The deterministic idempotency-key seed of one select/retire batch: the
+ * operation identity plus the EXACT observed preconditions (both record
+ * ETags). The same observation derives the same key in any process, so an
+ * identical rerun replays the recorded receipt, while a changed observation
+ * derives a different key — a stale ETag is never fed back into the same key
+ * as a changed precondition (which the pinned API would refuse with 422).
+ */
+const selectionSeed = (tenant, op, packId, version, contentHash, selectionEtag, targetEtag) =>
+  [tenant, packId, version, op, selectionEtag ?? "", targetEtag ?? "", contentHash ?? ""].join("|");
+
+/** The record shape every ws_pack_selections record must have; anything else stops the run. */
+function checkSelectionRecordShape(record) {
+  const data = record?.data;
+  if (record?.collection !== WS_PACK_SELECTIONS_COLLECTION || data?.key !== SELECTION_RECORD_KEY ||
+    typeof data?.packId !== "string" || typeof data?.version !== "string" || typeof data?.contentHash !== "string") {
+    throw new PackLifecycleError(CODE.RECORD_SCOPE_MISMATCH,
+      { message: "a ws_pack_selections record outside the expected app-owned selection scope was found; refusing to touch selection state" });
+  }
+  if (data.packId) {
+    try {
+      compareVersions(data.version, data.version);
+    } catch {
+      throw new PackLifecycleError(CODE.RECORD_SCOPE_MISMATCH,
+        { message: `the recorded selection version "${data.version}" is not an orderable pack version; refusing to touch selection state` });
+    }
+  }
+}
+
+/**
+ * The one `active` selection record read through the backend application, or
+ * null on a fresh owner. The list is deliberately UNFILTERED and bounded to a
+ * tiny page: a filtered query against a collection whose schema (and therefore
+ * index) does not exist yet is `400 invalid_query` on the real Core, and a
+ * read-only listing must never register a schema just to read. One selector
+ * per owner is the invariant, so a two-item page is enough: an absent or empty
+ * collection is no selection, while any malformed candidate or a second
+ * `active` record is refused as foreign state. Only a real 404 is read as an
+ * absent collection — every other 4xx/5xx is reported, never swallowed.
+ */
+async function readActiveSelectionRecord(junctura) {
+  let result;
+  try {
+    result = await (await junctura.request(`/v2/data/${WS_PACK_SELECTIONS_COLLECTION}?limit=2`)).json();
+  } catch (error) {
+    if (error instanceof JuncturaError && error.status === 404) return null;
+    throw upstreamError(`reading ${WS_PACK_SELECTIONS_COLLECTION}`, error);
+  }
+  const items = result?.items;
+  if (!Array.isArray(items)) {
+    throw new PackLifecycleError(CODE.RECORD_SCOPE_MISMATCH,
+      { message: `the ${WS_PACK_SELECTIONS_COLLECTION} listing did not carry an item array; refusing to read selection state` });
+  }
+  for (const record of items) checkSelectionRecordShape(record);
+  if (items.length > 1) {
+    throw new PackLifecycleError(CODE.RECORD_SCOPE_MISMATCH,
+      { message: "more than one active selection record was found; refusing to touch selection state" });
+  }
+  return items[0] ?? null;
+}
+
+/** The active selection record with its strong owner ETag, or null. */
+async function readActiveSelectionEtagged(junctura) {
+  const record = await readActiveSelectionRecord(junctura);
+  if (!record) return null;
+  const etagged = await readRecordEtagged(junctura, WS_PACK_SELECTIONS_COLLECTION, record.id);
+  checkSelectionRecordShape(etagged.record);
+  return etagged;
+}
+
+/** The active selection as readable pointer state, or null. */
+async function readActiveSelection(junctura) {
+  const record = await readActiveSelectionRecord(junctura);
+  return record ? pointerTargetOf(record.data) : null;
+}
+
+/**
+ * Bootstraps the one `active` selection record with an empty pointer: the
+ * schema is registered desired-state first, then the record is read — a
+ * regular by-key creation reserves it only when absent, and a racing creation
+ * cannot overwrite (a by-key PUT without If-Match against an existing record
+ * is 428), so concurrent bootstraps converge on the same single record.
+ *
+ * The record is ALWAYS handed back from a fresh read with its CURRENT strong
+ * ETag, never from the creation reply: a same-key replay on the real Core can
+ * keep returning the first receipt (the original empty pointer and the
+ * original ETag) even after a later selection committed, so that receipt is
+ * never current authority for the swap.
+ */
+async function ensureSelectionRecord(junctura, config, { log }) {
+  await registerSchema(junctura, WS_PACK_SELECTIONS_COLLECTION, WS_PACK_SELECTIONS_SCHEMA, { what: WS_PACK_SELECTIONS_COLLECTION });
+  log(`${WS_PACK_SELECTIONS_COLLECTION} schema registered`);
+  const existing = await readActiveSelectionEtagged(junctura);
+  if (existing) return existing;
+  const idempotencyKey = operationKey(operationSeed(config.tenant, SELECTION_RECORD_KEY, "bootstrap", "bootstrap", undefined, ""));
+  const outcome = await upsertByKey(junctura, WS_PACK_SELECTIONS_COLLECTION, SELECTION_RECORD_KEY, emptyPointerData(), { idempotencyKey });
+  if (outcome.status === 422) {
+    throw new PackLifecycleError(CODE.RECORD_IDEMPOTENCY_CONFLICT,
+      { message: "the bootstrap request key was reused with a different body; investigate before rerunning — never resolve it by picking a fresh key" });
+  }
+  if (outcome.status === 201) {
+    log(`selection record "${SELECTION_RECORD_KEY}" bootstrapped with an empty pointer`);
+  } else if (outcome.status !== 428 && outcome.status !== 412) {
+    throw new PackLifecycleError(CODE.RECORD_PRECONDITION,
+      { message: `bootstrapping the selection record failed (HTTP ${outcome.status}${outcome.code ? ` ${outcome.code}` : ""})` });
+  }
+  // A 201 may be a cached creation receipt (old empty pointer, old ETag), and
+  // 428/412 means another request created it first. In every case, read the
+  // CURRENT record and its CURRENT ETag before it can reach the swap.
+  const record = await readActiveSelectionEtagged(junctura);
+  if (!record) {
+    throw new PackLifecycleError(CODE.RECORD_PRECONDITION,
+      { message: "the selection record could not be read back after bootstrapping; rerun the same command" });
+  }
+  return record;
+}
+
+/**
+ * Sends one atomic record batch and classifies the pinned outcomes: transient
+ * statuses and a live foreign record lock (423) stay uncertain and are
+ * retried under the same key by the caller; 200 must carry a result per
+ * operation in input order with the exact record ids, anything else is an
+ * uncertain reply (the commit marker — the pointer — settles it on the rerun).
+ */
+async function writeBatch(junctura, operations, { idempotencyKey, what }) {
+  try {
+    const response = await junctura.request("/v2/data:batch", { method: "POST", json: { operations }, idempotencyKey });
+    const body = await response.json().catch(() => null);
+    const results = body?.results;
+    if (!Array.isArray(results) || results.length !== operations.length ||
+      results.some((result, index) => result?.op !== operations[index].op || result?.id !== operations[index].id ||
+        !Number.isInteger(result?.version) || result.version < 1)) {
+      throw uncertain(`${what}: the batch reply did not carry a matching per-operation result; rerun the same command`);
+    }
+    return { status: response.status, body };
+  } catch (error) {
+    if (error instanceof PackLifecycleError) throw error;
+    if (error instanceof JuncturaError) {
+      if (classify(error.status) === "transient" || error.status === 423) {
+        throw uncertain(`${what}: ${error.message}${error.status === 423 ? " (a live record lock; retry the same key)" : ""}`);
+      }
+      return { status: error.status, code: error.code };
+    }
+    throw uncertain(`${what}: ${error.message}`);
+  }
+}
+
+/** The shared refusal when a batch precondition failed: definite rollback, rerun re-observes. */
+function batchPreconditionError(code, what) {
+  return new PackLifecycleError(code, {
+    message: `${what} lost a precondition race (HTTP 412): the whole batch rolled back and nothing was applied — rerun the exact same command to re-observe`,
+  });
+}
+
+/**
+ * Durably selects one installed pack version as the authoritative state of the
+ * Workspace app. The operator must be a verified direct tenant console-admin
+ * separate from the backend application that owns the record writes. The
+ * target must be an installed, complete (`available`) version whose recorded
+ * content equals the mounted pack being selected; the atomic batch replaces
+ * only the `active` pointer and re-validates the target with a same-data
+ * replacement, both under the observed ETags — a concurrent select or retire
+ * rolls the whole batch back. Selecting an already-selected identical version
+ * is a replayed no-op (this is also the mounted-file verification of the
+ * current selection). One current version per app at all times.
+ */
+export async function selectPackVersion({ packId, version, contentHash, config, attempts = 4, delayMs = 250, log = () => {} }) {
+  const junctura = backendClient(config);
+  try {
+    await verifyOperatorIdentity(config);
+    await verifyBackendIdentity(config, junctura);
+    log("identities verified (direct tenant console-admin and enrolled backend)");
+
+    const installed = await readPackRecordsOrEmpty(junctura, packId);
+    const target = installed.find(record => record.data.version === version);
+    if (!target) {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} is not installed; only an installed available version may be selected` });
+    }
+    if (target.data.contentHash !== contentHash) {
+      throw new PackLifecycleError(CODE.VERSION_CONTENT_MISMATCH, {
+        message: `pack ${packId} ${version} is installed with different content (${target.data.contentHash} recorded, ${contentHash} on the mounted pack); refusing to select`,
+      });
+    }
+    if (target.data.status !== "available") {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} is "${target.data.status}", not an available complete version; only a complete available version may be selected` });
+    }
+    const targetEtagged = await readRecordEtagged(junctura, WS_PACKS_COLLECTION, target.id);
+    // The list was only a snapshot: validate the CURRENT record under the very
+    // ETag the batch will precondition on. A retirement that commits between
+    // the list and this read returns the now-retired record here, and it must
+    // never be selected.
+    const current = targetEtagged.record.data;
+    if (targetEtagged.record.collection !== WS_PACKS_COLLECTION || targetEtagged.record.id !== target.id ||
+      current?.packId !== packId || current?.version !== version) {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} changed identity while selecting; refusing to select — nothing was changed` });
+    }
+    if (current.contentHash !== contentHash) {
+      throw new PackLifecycleError(CODE.VERSION_CONTENT_MISMATCH, {
+        message: `pack ${packId} ${version} changed content while selecting (${current.contentHash} now recorded); refusing to select — nothing was changed`,
+      });
+    }
+    if (current.status !== "available") {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} is now "${current.status}", not an available complete version; only an available complete version may be selected — nothing was changed` });
+    }
+    const selection = await ensureSelectionRecord(junctura, config, { log });
+
+    const pointer = pointerTargetOf(selection.record.data);
+    if (pointer?.packId === packId && pointer?.version === version && pointer?.contentHash === contentHash) {
+      log(`pack ${packId} ${version} is already the active selection; nothing to change`);
+      return { outcome: "replayed", selection: pointer };
+    }
+
+    const operations = [
+      {
+        op: "replace", collection: WS_PACK_SELECTIONS_COLLECTION, id: selection.record.id, ifMatch: selection.etag,
+        data: pointerDataFor(packId, version, contentHash),
+      },
+      {
+        op: "replace", collection: WS_PACKS_COLLECTION, id: target.id, ifMatch: targetEtagged.etag,
+        data: current,
+      },
+    ];
+    const idempotencyKey = operationKey(selectionSeed(config.tenant, "select", packId, version, contentHash, selection.etag, targetEtagged.etag));
+    const outcome = await retrying(attempt => {
+      log(`selecting ${packId} ${version} (attempt ${attempt}, one atomic batch of ${operations.length} operations)`);
+      return writeBatch(junctura, operations, { idempotencyKey, what: `selecting ${packId} ${version}` });
+    }, { attempts, delayMs });
+    if (outcome.status === 200) {
+      const selected = pointerTargetOf(pointerDataFor(packId, version, contentHash));
+      log(`pack ${packId} ${version} is now the active selection`);
+      return { outcome: "selected", selection: selected };
+    }
+    if (outcome.status === 412) throw batchPreconditionError(CODE.SELECTION_PRECONDITION, `selecting ${packId} ${version}`);
+    if (outcome.status === 422) {
+      throw new PackLifecycleError(CODE.RECORD_IDEMPOTENCY_CONFLICT,
+        { message: "the select request key was reused with a different body; investigate before rerunning — never resolve it by picking a fresh key" });
+    }
+    throw new PackLifecycleError(CODE.RECORD_PRECONDITION,
+      { message: `selecting failed (HTTP ${outcome.status}${outcome.code ? ` ${outcome.code}` : ""})` });
+  } catch (error) {
+    if (error?.uncertain === true) {
+      throw new PackLifecycleError(CODE.PENDING_NOT_SETTLED, {
+        message: `${error.message} — the outcome is uncertain; rerun the exact same command so the same request key replays (the pointer of the one active record is the commit marker)`,
+        uncertain: true,
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Safely retires one installed pack version: the atomic batch pins the SAME
+ * observed pointer ETag (a same-data replacement of the `active` record) and
+ * marks only the target ws_packs record `retired` under its observed ETag.
+ * The selected version is refused (`RETIRE_SELECTED`) — select another
+ * installed version first. Retirement deletes nothing: deployed BPMN
+ * definitions, Directory resources and every prior app record stay in place
+ * for existing cases. Retiring an already-retired version is a replayed
+ * no-op.
+ */
+export async function retirePackVersion({ packId, version, config, attempts = 4, delayMs = 250, log = () => {} }) {
+  const junctura = backendClient(config);
+  try {
+    await verifyOperatorIdentity(config);
+    await verifyBackendIdentity(config, junctura);
+    log("identities verified (direct tenant console-admin and enrolled backend)");
+
+    const installed = await readPackRecordsOrEmpty(junctura, packId);
+    const target = installed.find(record => record.data.version === version);
+    if (!target || target.data.status === "installing") {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID, {
+        message: !target
+          ? `pack ${packId} ${version} is not installed; nothing to retire`
+          : `pack ${packId} ${version} is still "installing"; an incomplete install is never retired — rerun or resolve the install first`,
+      });
+    }
+    if (target.data.status === "retired") {
+      log(`pack ${packId} ${version} is already retired; nothing to change`);
+      return { outcome: "replayed", record: target.data };
+    }
+    const targetEtagged = await readRecordEtagged(junctura, WS_PACKS_COLLECTION, target.id);
+    // The list was only a snapshot: the write below must use the CURRENT
+    // record under the ETag it preconditions on. A retirement that committed
+    // between the list and this read is a replay; any other drift fails closed.
+    const current = targetEtagged.record.data;
+    if (targetEtagged.record.collection !== WS_PACKS_COLLECTION || targetEtagged.record.id !== target.id ||
+      current?.packId !== packId || current?.version !== version || current?.contentHash !== target.data.contentHash) {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} changed underneath this retire; rerun the same command to re-observe — nothing was changed` });
+    }
+    if (current.status === "retired") {
+      log(`pack ${packId} ${version} was retired by a concurrent command; replaying its result`);
+      return { outcome: "replayed", record: current };
+    }
+    if (current.status !== "available") {
+      throw new PackLifecycleError(CODE.SELECTION_TARGET_INVALID,
+        { message: `pack ${packId} ${version} is now "${current.status}", not an available version; nothing was retired` });
+    }
+    const selection = await ensureSelectionRecord(junctura, config, { log });
+
+    const pointer = pointerTargetOf(selection.record.data);
+    if (pointer?.packId === packId && pointer?.version === version) {
+      throw new PackLifecycleError(CODE.RETIRE_SELECTED, {
+        message: `pack ${packId} ${version} is the active selection; select another installed version first — retirement never removes the active version`,
+      });
+    }
+
+    // Existing #39 owner scopes registered an older ws_packs schema. The
+    // pinned registerCollectionSchema is the record-retaining migration: it
+    // validates every existing record and rebuilds the indexes in one
+    // transaction, so re-registering the current (retired-capable) schema
+    // before the first "retired" write is the only mutation-needed step.
+    await registerSchema(junctura, WS_PACKS_COLLECTION, WS_PACKS_SCHEMA, { what: WS_PACKS_COLLECTION });
+    log(`${WS_PACKS_COLLECTION} schema registered (retired-capable)`);
+
+    const operations = [
+      {
+        op: "replace", collection: WS_PACK_SELECTIONS_COLLECTION, id: selection.record.id, ifMatch: selection.etag,
+        data: selection.record.data,
+      },
+      {
+        op: "replace", collection: WS_PACKS_COLLECTION, id: target.id, ifMatch: targetEtagged.etag,
+        data: { ...current, status: "retired" },
+      },
+    ];
+    const idempotencyKey = operationKey(selectionSeed(config.tenant, "retire", packId, version, current.contentHash, selection.etag, targetEtagged.etag));
+    const outcome = await retrying(attempt => {
+      log(`retiring ${packId} ${version} (attempt ${attempt}, one atomic batch of ${operations.length} operations)`);
+      return writeBatch(junctura, operations, { idempotencyKey, what: `retiring ${packId} ${version}` });
+    }, { attempts, delayMs });
+    if (outcome.status === 200) {
+      const record = { ...current, status: "retired" };
+      log(`pack ${packId} ${version} is retired (definitions, Directory resources and prior records untouched)`);
+      return { outcome: "retired", record };
+    }
+    if (outcome.status === 412) throw batchPreconditionError(CODE.RETIRE_PRECONDITION, `retiring ${packId} ${version}`);
+    if (outcome.status === 422) {
+      throw new PackLifecycleError(CODE.RECORD_IDEMPOTENCY_CONFLICT,
+        { message: "the retire request key was reused with a different body; investigate before rerunning — never resolve it by picking a fresh key" });
+    }
+    throw new PackLifecycleError(CODE.RECORD_PRECONDITION,
+      { message: `retiring failed (HTTP ${outcome.status}${outcome.code ? ` ${outcome.code}` : ""})` });
+  } catch (error) {
+    if (error?.uncertain === true) {
+      throw new PackLifecycleError(CODE.PENDING_NOT_SETTLED, {
+        message: `${error.message} — the outcome is uncertain; rerun the exact same command so the same request key replays (the pointer of the one active record is the commit marker)`,
+        uncertain: true,
+        cause: error,
+      });
+    }
+    throw error;
+  }
 }

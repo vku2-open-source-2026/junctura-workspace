@@ -28,20 +28,49 @@
 // `ws_packs` collection before any Directory or Flowable action, deterministic
 // request keys replayed on rerun, and the reservation finalized to "available"
 // only after every effect committed. Explicit activation and safe retirement
-// are deliberately not part of this slice and are documented as deferred in
-// docs/PACK_FORMAT.md.
+// are the separate `--select`/`--retire` commands documented below.
 //
 // `--list` reads the recorded pack state (complete and incomplete installs)
-// through the backend application without mutating anything.
+// and the current active selection through the backend application without
+// mutating anything.
+//
+// `--select <pack-dir>` durably selects the exact installed version whose
+// mounted assets the operator points at: the pack is validated offline with
+// the shared preflight reader and its content hash must equal the recorded
+// hash of the installed ws_packs version (the minimal verification of a
+// selected pack against mounted files), and only an available complete
+// version may be selected. The swap is one atomic `POST /v2/data:batch` — the
+// app-scoped `active` selection pointer plus a same-data re-validation of the
+// target version under their observed ETags — so a competing select or retire
+// rolls the whole batch back. Rerunning the command after any uncertain
+// outcome replays under the same derived request key; the pointer of the one
+// `active` record is the commit marker.
+//
+// `--retire <pack-id> <version>` safely retires an installed version: one
+// atomic batch pins the same observed pointer ETag and marks only that
+// version's record `retired`. The currently selected version is refused
+// (select another installed version first); deployed BPMN definitions,
+// Directory resources and prior app records are never deleted, so existing
+// cases keep running.
 //
 // Exit codes:
-//   0  the requested work was produced (plan, install or listing)
+//   0  the requested work was produced (plan, install, selection, retirement or listing)
 //   1  invalid input (the pack failed validation) or a failed command
 //   2  usage error (missing or unknown arguments)
 //   3  refused without effect (lifecycle configuration missing)
 import { pathToFileURL } from "node:url";
 import { PackReadErrorCode, readPack } from "../server/packs.mjs";
-import { PackLifecycleError, buildExecutablePlan, installPack, listInstalledPacks, readLifecycleConfig } from "../server/pack-lifecycle.mjs";
+import {
+  PackLifecycleError,
+  buildExecutablePlan,
+  compareVersions,
+  installPack,
+  listInstalledPacks,
+  packContentHash,
+  readLifecycleConfig,
+  retirePackVersion,
+  selectPackVersion,
+} from "../server/pack-lifecycle.mjs";
 
 /** Stable machine-readable codes of planner-level errors (docs/PACK_FORMAT.md). */
 export const PlanErrorCode = Object.freeze({
@@ -246,11 +275,13 @@ export async function planPackInstall(packDir) {
   };
 }
 
-const USAGE = `pack:install — install a Junctura Workspace pack
+const USAGE = `pack:install — install, select and retire a Junctura Workspace pack
 
 Usage:
   node scripts/pack-install.mjs <pack-dir> --dry-run
   node scripts/pack-install.mjs <pack-dir>
+  node scripts/pack-install.mjs <pack-dir> --select
+  node scripts/pack-install.mjs --retire <pack-id> <version>
   node scripts/pack-install.mjs --list
 
 --dry-run validates the pack and prints an ordered JSON plan of the install
@@ -258,9 +289,14 @@ work on stdout; nothing is executed, no HTTP request is made and no file is
 written. Without it the pack is validated first and then really installed on
 the configured DX-OS stack (JUNCTURA_URL, JUNCTURA_TENANT,
 JUNCTURA_APP_CLIENT_ID, JUNCTURA_APP_CLIENT_SECRET, JUNCTURA_OPERATOR_TOKEN —
-see docs/PACK_FORMAT.md). --list reads the recorded pack state (complete and
-incomplete installs) without changing anything. See docs/PACK_FORMAT.md for
-the plan shape and exit codes.`;
+see docs/PACK_FORMAT.md). --select points at the mounted pack directory whose
+installed version becomes the app's one active selection (only a complete
+available version whose recorded content matches the mounted pack; the swap is
+one atomic record batch). --retire marks an installed version retired without
+deleting deployed definitions, Directory resources or prior records; the
+active selection is refused. --list reads the recorded pack state and the
+active selection without changing anything. See docs/PACK_FORMAT.md for the
+plan shape and exit codes.`;
 
 /** Renders a lifecycle failure as the stderr payload of a failed command. */
 function errorPayload(error) {
@@ -290,14 +326,19 @@ async function cli(argv) {
     return 0;
   }
   for (const flag of flags) {
-    if (flag !== "--dry-run" && flag !== "--list") {
+    if (flag !== "--dry-run" && flag !== "--list" && flag !== "--select" && flag !== "--retire") {
       console.error(`unknown option "${flag}"\n\n${USAGE}`);
       return 2;
     }
   }
+  const exclusive = ["--dry-run", "--list", "--select", "--retire"].filter(flag => flags.includes(flag));
+  if (exclusive.length > 1) {
+    console.error(`${exclusive.join(" and ")} cannot be combined\n\n${USAGE}`);
+    return 2;
+  }
   if (flags.includes("--list")) {
-    if (positional.length !== 0 || flags.includes("--dry-run")) {
-      console.error(`--list takes no pack directory and cannot be combined with --dry-run\n\n${USAGE}`);
+    if (positional.length !== 0) {
+      console.error(`--list takes no pack directory\n\n${USAGE}`);
       return 2;
     }
     let config;
@@ -310,6 +351,69 @@ async function cli(argv) {
     try {
       const listing = await listInstalledPacks({ config, log: line => console.error(line) });
       console.log(JSON.stringify(listing, null, 2));
+      return 0;
+    } catch (error) {
+      console.error(JSON.stringify(errorPayload(error), null, 2));
+      return 1;
+    }
+  }
+  if (flags.includes("--select")) {
+    if (positional.length !== 1) {
+      console.error(`--select expects exactly one pack directory\n\n${USAGE}`);
+      return 2;
+    }
+    // The mounted assets are validated offline first and their content hash is
+    // what selection verifies against the durable record of the target version.
+    const read = await readPack(positional[0]);
+    if (!read.ok) {
+      console.error(JSON.stringify({ ok: false, errors: read.errors }, null, 2));
+      return 1;
+    }
+    let config;
+    try {
+      config = readLifecycleConfig(process.env);
+    } catch (error) {
+      if (error instanceof PackLifecycleError && error.code === "LIFECYCLE_CONFIG_MISSING") return configMissing(error);
+      throw error;
+    }
+    const packId = read.pack.manifest.id;
+    const version = read.pack.manifest.version;
+    const contentHash = packContentHash(read.pack);
+    try {
+      const outcome = await selectPackVersion({ packId, version, contentHash, config, log: line => console.error(line) });
+      console.log(JSON.stringify({ ok: true, ...outcome, pack: { id: packId, version, contentHash } }, null, 2));
+      return 0;
+    } catch (error) {
+      console.error(JSON.stringify(errorPayload(error), null, 2));
+      return 1;
+    }
+  }
+  if (flags.includes("--retire")) {
+    if (positional.length !== 2) {
+      console.error(`--retire expects exactly one pack id and one version\n\n${USAGE}`);
+      return 2;
+    }
+    const [packId, version] = positional;
+    if (!/^[a-z][a-z0-9-]{0,62}$/.test(packId)) {
+      console.error(`"packId" must match ^[a-z][a-z0-9-]{0,62}$\n\n${USAGE}`);
+      return 2;
+    }
+    try {
+      compareVersions(version, version);
+    } catch {
+      console.error(`"version" must be an orderable pack version like 1.2.3 or 1.2.3-rc.1\n\n${USAGE}`);
+      return 2;
+    }
+    let config;
+    try {
+      config = readLifecycleConfig(process.env);
+    } catch (error) {
+      if (error instanceof PackLifecycleError && error.code === "LIFECYCLE_CONFIG_MISSING") return configMissing(error);
+      throw error;
+    }
+    try {
+      const outcome = await retirePackVersion({ packId, version, config, log: line => console.error(line) });
+      console.log(JSON.stringify({ ok: true, pack: { id: packId, version }, ...outcome }, null, 2));
       return 0;
     } catch (error) {
       console.error(JSON.stringify(errorPayload(error), null, 2));
