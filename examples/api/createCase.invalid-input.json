@@ -1,0 +1,19 @@
+{
+  "operationId": "createCase",
+  "scenario": "invalid-input",
+  "description": "Thiếu trường bắt buộc subject của CaseCreate: thân yêu cầu bị schema từ chối và API trả 400 invalid_input mà không gọi DX-OS.",
+  "request": {
+    "headers": { "Idempotency-Key": "5f0a9c1e-2222-4333-8444-555566667777" },
+    "body": {
+      "recordType": "chuyen-tuyen",
+      "receiverUnit": "benh-vien-b",
+      "input": { "ly-do-chuyen-tuyen": "Cần phẫu thuật chuyên sâu", "muc-uu-tien": "Khẩn" }
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "invalid_input"
+    }
+  }
+}

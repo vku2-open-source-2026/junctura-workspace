@@ -1,0 +1,21 @@
+{
+  "operationId": "completeTask",
+  "scenario": "conflict",
+  "description": "Bước đang bị người khác giữ claim (Trần Thị B đến 09:30): lần gửi của người khác bị từ chối 409 task_claimed kèm người giữ và hạn claim.",
+  "request": {
+    "headers": { "Idempotency-Key": "d1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "decision": "tiep-nhan",
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" }
+    }
+  },
+  "response": {
+    "status": 409,
+    "body": {
+      "error": "task_claimed",
+      "requestId": "6f2e3d4c-5555-4666-8777-888899990000",
+      "claimedBy": "Trần Thị B",
+      "claimedUntil": "2026-11-27T09:30:00Z"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "operationId": "listNotices",
+  "scenario": "success",
+  "description": "Nhân viên xem bảng tin phối hợp, mới nhất trước; một thông báo được ghim. Dữ liệu đọc từ bộ sưu tập ws_notices trên DX-OS.",
+  "request": {
+    "headers": {},
+    "query": { "limit": "50" },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "id": "aa0b1c2d-3333-4444-8555-666677778899",
+          "title": "Chuẩn bị số liệu quý 4",
+          "body": "Các đơn vị gửi số liệu trước ngày 30/11.",
+          "author": { "displayName": "Phòng Điều phối", "unit": "so-y-te" },
+          "pinned": true,
+          "createdAt": "2026-11-25T08:00:00Z"
+        },
+        {
+          "id": "bb0b1c2d-3333-4444-8555-666677778899",
+          "title": "Bảo trì hệ thống",
+          "body": "Hệ thống bảo trì từ 22:00 đến 23:00 ngày 28/11.",
+          "author": { "displayName": "Phòng Điều phối", "unit": "so-y-te" },
+          "pinned": false,
+          "createdAt": "2026-11-26T10:00:00Z"
+        }
+      ],
+      "nextCursor": null
+    }
+  }
+}

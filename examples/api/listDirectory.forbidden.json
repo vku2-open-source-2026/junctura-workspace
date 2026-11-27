@@ -1,0 +1,17 @@
+{
+  "operationId": "listDirectory",
+  "scenario": "forbidden",
+  "description": "Nhân viên thường của benh-vien-b không phải quản trị viên danh bạ: các lệnh liệt kê directory của DX-OS đòi enrolled tenant directory administrator nên bị từ chối 403 forbidden. Workspace giữ nguyên phạm vi người dùng, không fallback sang định danh app để mở quyền.",
+  "request": {
+    "headers": {},
+    "query": { "type": "units", "limit": "50" },
+    "body": null
+  },
+  "response": {
+    "status": 403,
+    "body": {
+      "error": "forbidden",
+      "requestId": "8c7d6e5f-6666-4777-8888-9999aaaabbbb"
+    }
+  }
+}

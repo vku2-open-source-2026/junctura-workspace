@@ -1,0 +1,22 @@
+{
+  "operationId": "createCase",
+  "scenario": "replay-conflict",
+  "description": "Gửi lại Idempotency-Key K-CASE đã dùng nhưng đổi thân yêu cầu (đổi đối tượng): bị từ chối 422 idempotency_key_reused, không đè lên hồ sơ đã mở.",
+  "request": {
+    "headers": { "Idempotency-Key": "3f0a9c1e-2222-4333-8444-555566667777" },
+    "body": {
+      "recordType": "chuyen-tuyen",
+      "receiverUnit": "benh-vien-b",
+      "subject": "Nguyễn Thị B",
+      "urgency": "Khẩn",
+      "input": { "ly-do-chuyen-tuyen": "Cần phẫu thuật chuyên sâu", "muc-uu-tien": "Khẩn" }
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": "idempotency_key_reused",
+      "requestId": "1f2e3d4c-5555-4666-8777-888899990000"
+    }
+  }
+}

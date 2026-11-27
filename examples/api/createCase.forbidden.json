@@ -1,0 +1,22 @@
+{
+  "operationId": "createCase",
+  "scenario": "forbidden",
+  "description": "Y tá Trần Thị B (benh-vien-b, nhóm y-ta) không thuộc nhóm gửi của loại hồ sơ chuyển tuyến: bị từ chối 403 forbidden. Quyền được kiểm ở lõi DX-OS với token đã chuyển tiếp, không phải do Workspace tự quyết.",
+  "request": {
+    "headers": { "Idempotency-Key": "4f0a9c1e-2222-4333-8444-555566667777" },
+    "body": {
+      "recordType": "chuyen-tuyen",
+      "receiverUnit": "phong-kham-a",
+      "subject": "Nguyễn Văn An",
+      "urgency": "Thường",
+      "input": { "ly-do-chuyen-tuyen": "Cần khám chuyên khoa", "muc-uu-tien": "Thường" }
+    }
+  },
+  "response": {
+    "status": 403,
+    "body": {
+      "error": "forbidden",
+      "requestId": "2f2e3d4c-5555-4666-8777-888899990000"
+    }
+  }
+}

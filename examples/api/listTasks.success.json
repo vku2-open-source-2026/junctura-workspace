@@ -1,0 +1,31 @@
+{
+  "operationId": "listTasks",
+  "scenario": "success",
+  "description": "Y tá Trần Thị B (benh-vien-b, nhóm y-ta) xem việc hôm nay: bước tiếp nhận còn quá hạn do dueAt đã qua, có người giữ claim.",
+  "request": {
+    "headers": {},
+    "query": { "limit": "50" },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "taskId": "task-12-tiep-nhan-benh-nhan",
+          "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+          "executionId": "chuyen-tuyen:12:345",
+          "stepKey": "tiep-nhan-benh-nhan",
+          "name": "Tiếp nhận bệnh nhân",
+          "unit": "benh-vien-b",
+          "candidateGroups": ["y-ta", "bac-si"],
+          "dueAt": "2026-11-27T08:00:00Z",
+          "overdue": true,
+          "claimedBy": "Trần Thị B",
+          "claimedUntil": "2026-11-27T09:30:00Z"
+        }
+      ],
+      "nextCursor": null
+    }
+  }
+}

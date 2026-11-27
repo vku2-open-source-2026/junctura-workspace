@@ -1,0 +1,17 @@
+{
+  "operationId": "completeTask",
+  "scenario": "invalid-input",
+  "description": "Thiếu trường bắt buộc decision của TaskCompletion: thân yêu cầu bị schema từ chối và API trả 400 invalid_input; quyết định nào bắt buộc lý do được kiểm lúc chạy theo gói ngành.",
+  "request": {
+    "headers": { "Idempotency-Key": "e1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" }
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "invalid_input"
+    }
+  }
+}

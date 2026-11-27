@@ -1,0 +1,21 @@
+{
+  "operationId": "attachCaseFile",
+  "scenario": "success",
+  "description": "Bác sĩ phòng khám A đính kèm tệp PDF lên hồ sơ chuyển tuyến. Thân yêu cầu là multipart/form-data (phần file và phần name) nên không được kiểm bằng JSON Schema; byte đi qua quét mã độc của DX-OS rồi mới công bố.",
+  "request": {
+    "headers": { "Idempotency-Key": "b2c3d4e5-4444-4555-8666-777788889999" },
+    "body": null
+  },
+  "response": {
+    "status": 201,
+    "body": {
+      "id": "7c8d9e0f-1111-4222-8333-444455556677",
+      "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+      "name": "don-chuyen-tuyen.pdf",
+      "mediaType": "application/pdf",
+      "size": 184320,
+      "uploadedBy": { "displayName": "Lê Văn A", "unit": "phong-kham-a" },
+      "uploadedAt": "2026-11-27T09:05:00Z"
+    }
+  }
+}

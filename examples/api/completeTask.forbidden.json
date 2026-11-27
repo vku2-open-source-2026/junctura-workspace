@@ -1,0 +1,19 @@
+{
+  "operationId": "completeTask",
+  "scenario": "forbidden",
+  "description": "Bác sĩ không thuộc nhóm y-ta giữ bước tiếp nhận (đơn vị đúng nhưng nhóm sai): bị từ chối 403 task_group_required theo ngữ nghĩa của lõi DX-OS.",
+  "request": {
+    "headers": { "Idempotency-Key": "b1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "decision": "tiep-nhan",
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" }
+    }
+  },
+  "response": {
+    "status": 403,
+    "body": {
+      "error": "task_group_required",
+      "requestId": "5f2e3d4c-5555-4666-8777-888899990000"
+    }
+  }
+}

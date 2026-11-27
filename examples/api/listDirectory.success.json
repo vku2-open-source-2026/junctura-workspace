@@ -1,0 +1,19 @@
+{
+  "operationId": "listDirectory",
+  "scenario": "success",
+  "description": "Tìm đơn vị trong danh bạ với bộ lọc q=benh do Workspace áp trên các trang directory của DX-OS; kết quả trả về một trang duy nhất.",
+  "request": {
+    "headers": {},
+    "query": { "type": "units", "q": "benh", "limit": "50" },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "items": [
+        { "kind": "unit", "unit": "benh-vien-b", "unitType": "benh-vien", "name": "Bệnh viện B" }
+      ],
+      "nextCursor": null
+    }
+  }
+}

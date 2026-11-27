@@ -1,0 +1,20 @@
+{
+  "operationId": "completeTask",
+  "scenario": "replay-conflict",
+  "description": "Gửi lại Idempotency-Key K-DONE đã dùng nhưng đổi quyết định: bị từ chối 422 idempotency_key_reused, quyết định cũ vẫn giữ nguyên.",
+  "request": {
+    "headers": { "Idempotency-Key": "a1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "decision": "tu-choi-tiep-nhan",
+      "reason": "Thiếu giấy tờ",
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" }
+    }
+  },
+  "response": {
+    "status": 422,
+    "body": {
+      "error": "idempotency_key_reused",
+      "requestId": "4f2e3d4c-5555-4666-8777-888899990000"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "operationId": "completeTask",
+  "scenario": "invalid-input",
+  "description": "records.collection ngoài danh mục Workspace cho phép (registry_records): schema hợp đồng chốt enum các bộ sưu tập ws_* nên từ chối thân yêu cầu trước khi chuyển tiếp và ghi 400 invalid_input; không có bản ghi nào được tạo.",
+  "request": {
+    "headers": { "Idempotency-Key": "7e6d5c4b-3333-4222-8555-666677788899" },
+    "body": {
+      "decision": "tiep-nhan",
+      "records": [
+        { "collection": "registry_records", "data": { "caseId": "9f1d2c3a-1111-4222-8333-444455556666", "text": "Bộ sưu tập không nằm trong danh mục" } }
+      ]
+    }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "invalid_input",
+      "requestId": "6d5c4b3a-3333-4111-8444-555566667788"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "operationId": "completeTask",
+  "scenario": "success",
+  "description": "Y tá Trần Thị B hoàn tất bước tiếp nhận với quyết định tiep-nhan kèm giá trị biểu mẫu và một bản ghi ghi chú (records): DX-OS cam kết chuyển trạng thái bước cùng các bản ghi qua outbox hoàn tất; phản hồi 202 nghĩa là bước đang chờ chuyển.",
+  "request": {
+    "headers": { "Idempotency-Key": "a1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "decision": "tiep-nhan",
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" },
+      "records": [
+        { "collection": "ws_case_notes", "data": { "caseId": "9f1d2c3a-1111-4222-8333-444455556666", "text": "Đã tiếp nhận bệnh nhân" } }
+      ]
+    }
+  },
+  "response": {
+    "status": 202,
+    "body": {
+      "taskId": "task-12-tiep-nhan-benh-nhan",
+      "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+      "completionStatus": "pending"
+    }
+  }
+}

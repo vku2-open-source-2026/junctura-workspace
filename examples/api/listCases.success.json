@@ -1,0 +1,32 @@
+{
+  "operationId": "listCases",
+  "scenario": "success",
+  "description": "Bác sĩ phòng khám A liệt kê hồ sơ của mình, mới nhất trước; đây là trang cuối nên nextCursor là null.",
+  "request": {
+    "headers": {},
+    "query": { "limit": "50" },
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+          "executionId": "chuyen-tuyen:12:345",
+          "recordType": "chuyen-tuyen",
+          "status": "running",
+          "senderUnit": "phong-kham-a",
+          "receiverUnit": "benh-vien-b",
+          "subject": "Nguyễn Văn An",
+          "urgency": "Khẩn",
+          "dueAt": "2026-11-28T09:00:00Z",
+          "overdue": false,
+          "createdAt": "2026-11-27T09:00:00Z",
+          "updatedAt": "2026-11-27T09:00:00Z"
+        }
+      ],
+      "nextCursor": null
+    }
+  }
+}
