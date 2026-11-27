@@ -19,6 +19,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@junctura/server-client": "^0.1.0"
+    "@junctura/server-client": "^0.1.0",
+    "ajv": "8.20.0",
+    "saxes": "6.0.0"
   }
 }

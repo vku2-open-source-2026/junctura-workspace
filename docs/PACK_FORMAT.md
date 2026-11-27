@@ -101,7 +101,7 @@ Schema tự kiểm các điều kiện một tài liệu có thể biểu diễn
 
 - Mọi `id`, kể cả `id` của gói, dùng cùng một quy tắc định danh ổn định: chữ thường, số và gạch ngang, bắt đầu bằng chữ cái, dài tối đa 63 ký tự (`^[a-z][a-z0-9-]{0,62}$`).
 - ID ổn định vĩnh viễn: đổi nhãn thoải mái, đổi ID là gói khác. `pack:install` dùng ID để nhận diện khi nâng phiên bản, nên nâng phiên bản trong cùng ID sẽ cập nhật tại chỗ, không nhân đôi loại đơn vị hay nhóm. ID mới chỉ được thêm; ID đã phát hành không được tái sử dụng cho ý nghĩa khác.
-- `version` là chuỗi `X.Y.Z` với tiền phát tùy chọn theo mẫu trong schema; schema chỉ kiểm dạng chuỗi, thứ tự phiên bản do bộ đọc gói so sánh khi nâng cấp (issue #8).
+- `version` là chuỗi `X.Y.Z` với tiền phát tùy chọn theo mẫu trong schema; schema chỉ kiểm dạng chuỗi, còn kiểm "phiên bản mới phải lớn hơn" khi nâng cấp thuộc `pack:install` (issue #12), không phải bộ đọc gói.
 
 ## Hạn xử lý
 
@@ -110,12 +110,13 @@ Schema tự kiểm các điều kiện một tài liệu có thể biểu diễn
 ## BPMN
 
 - Mỗi quy trình một tệp BPMN 2.0 với phần mở rộng `.bpmn20.xml`, đặt tên như các tệp trong `junctura-health/workflows/` và DX-OS; schema còn nhận `.bpmn` cho gói cũ.
-- Tệp khai báo `process/@id` trùng `workflows[].id`.
+- Tệp khai báo `process/@id` trùng `workflows[].id`, và `process` phải là con trực tiếp của `definitions`.
+- Các `userTask` khớp `steps[].id` phải nằm trong `process` — con trực tiếp hay qua BPMN subprocess đều được; `userTask` ở ngoài `process` không đếm để khớp manifest.
 - Chưa cần phần tử điều kiện hay gateway trong v1; các quyết định của bước được khai báo trong `steps[].decisions` và nạp vào Workspace làm lựa chọn hoàn tất việc.
 
 ## Kiểm tra chéo của bộ đọc gói (issue #8)
 
-Schema một tài liệu không biểu diễn được (hoặc không nên biểu diễn) các bất biến giữa tệp và giữa các phần tử trong một mảng. Những kiểm tra sau thuộc bộ đọc gói ở issue #8, không phải lệnh kiểm schema ở trên:
+Schema một tài liệu không biểu diễn được (hoặc không nên biểu diễn) các bất biến giữa tệp và giữa các phần tử trong một mảng. Những kiểm tra sau thuộc bộ đọc gói ở issue #8, không phải lệnh kiểm schema ở trên; hợp đồng kết quả và lỗi của bộ đọc nằm ở phần [Bộ đọc gói và preflight](#bộ-đọc-gói-và-preflight-issue-8):
 
 1. Mảng `groups`, `unitTypes`, `recordTypes`, `workflows` không có `id` trùng; `steps`, `decisions`, `fields` cũng vậy trong phạm vi cha của chúng.
 2. `workflows[].recordType` phải là một `recordTypes[].id`.
@@ -127,3 +128,35 @@ Schema một tài liệu không biểu diễn được (hoặc không nên biể
 ## Schema
 
 Schema JSON có phiên bản nằm ở `schemas/pack.schema.json` và `schemas/units.schema.json` (draft 2020-12), là nguồn sự thật cho cấu trúc từng tài liệu. Lệnh `scripts/check-pack-schemas.py` nạp hai schema này qua `jsonschema.Draft202012Validator`, không cài lại logic kiểm schema trong code.
+
+## Bộ đọc gói và preflight (issue #8)
+
+Bộ đọc gói nằm ở `server/packs.mjs`, là một hàm preflight thuần túy dùng chung cho `pack:install` và thư viện loại hồ sơ: `readPack(packDir)` chỉ đọc gói từ đĩa — không gọi API, không ghi trạng thái, không truy cập mạng, không cơ sở dữ liệu, không xác thực. Mỗi lần gọi đọc lại từ đầu và trả kết quả như nhau.
+
+Hợp đồng kết quả:
+
+- Thành công: `{ ok: true, pack }` — `pack.manifest` và `pack.units` là `pack.json`/`units.json` đã parse, giữ nguyên dữ liệu; `pack.workflows[]` theo thứ tự manifest, mỗi quy trình có `id`, `bpmn` (đường dẫn như trong manifest), `processId`, `userTaskIds` (các `userTask` trong `process`, theo thứ tự văn bản) và `xml` (nguyên văn nội dung BPMN để bộ cài nạp lên engine).
+- Thất bại: `{ ok: false, errors }` — mỗi lỗi có `code` (mã ổn định, bảng dưới), `file` (đường dẫn trong gói: `pack.json`, `units.json`, tệp BPMN, hoặc `.` cho chính thư mục gói), `path` (JSON pointer RFC 6901 với tệp JSON, locator kiểu XPath với BPMN, rỗng với lỗi cấp tệp) và `message`. Bộ đọc gom càng nhiều lỗi độc lập càng tốt: manifest hỏng schema thì dừng các đọc phụ thuộc, còn `units.json` và BPMN được kiểm độc lập với nhau.
+
+| `code` | Khi nào |
+| --- | --- |
+| `PACK_DIR_UNREADABLE` | Thư mục gói thiếu hoặc không phải thư mục. |
+| `PACK_MANIFEST_ESCAPE` / `PACK_UNITS_ESCAPE` / `PACK_BPMN_ESCAPE` | Đường dẫn tham chiếu vượt ra ngoài thư mục gói, kể qua symlink. |
+| `PACK_MANIFEST_UNREADABLE` / `PACK_UNITS_UNREADABLE` | Tệp thiếu hoặc không parse được JSON. |
+| `PACK_MANIFEST_INVALID` / `PACK_UNITS_INVALID` | Vi phạm schema, một lỗi cho mỗi vi phạm, kèm JSON pointer. |
+| `PACK_DUPLICATE_ID` | `id` trùng trong cùng phạm vi: mảng gốc của `pack.json`, `units[]`, `steps` trong một quy trình, `decisions` trong một bước, `fields` trong một biểu mẫu. |
+| `PACK_REF_NOT_FOUND` | Tham chiếu trỏ tới id không tồn tại trong mảng đích (`recordType`, `unitTypes`, `groups`, các vai trò, `parent`). |
+| `PACK_OPEN_ROLE_NOT_SENDER` | `open.role` là nhóm thật nhưng không thuộc `senderGroups`. |
+| `PACK_OPEN_UNIT_TYPE_NOT_ALLOWED` | `open.unitTypes` là loại đơn vị thật nhưng không thuộc `senderUnitTypes`. |
+| `PACK_STEP_ROLE_NOT_IN_WORKFLOW` | `steps[].role` là nhóm thật nhưng không thuộc `senderGroups` hay `receiverGroups`. |
+| `PACK_STEP_UNIT_TYPE_NOT_ALLOWED` | `steps[].unitTypes` là loại đơn vị thật nhưng không thuộc `senderUnitTypes ∪ receiverUnitTypes`. |
+| `PACK_UNIT_CYCLE` | Chuỗi `parent` tạo chu trình. |
+| `PACK_UNIT_TREE_INVALID` | Cây đơn vị không có đúng một gốc. |
+| `PACK_BPMN_MISSING` / `PACK_BPMN_UNREADABLE` | Tệp BPMN thiếu, là vòng lặp symlink hoặc không phải tệp thường. |
+| `PACK_BPMN_XML_INVALID` | XML hỏng, có DOCTYPE/DTD, root không phải `definitions` trong namespace BPMN 2.0, `process` không là con trực tiếp của `definitions`, không có đúng một `process` (có `@id`), hoặc id `userTask` thiếu/trùng. |
+| `PACK_BPMN_PROCESS_ID_MISMATCH` | `process/@id` khác `workflows[].id`. |
+| `PACK_BPMN_STEP_MISMATCH` | `steps[].id` và id `userTask` trong `process` không khớp theo cả hai chiều: mỗi bước có một `userTask` trong `process` và mọi `userTask` trong `process` có một bước. |
+
+Module cũng xuất `PackReadErrorCode` (bảng mã trên). Nửa "hai tệp cùng `formatVersion`" của kiểm 6 được schema ghim bằng `const 1`; nửa "phiên bản mới phải lớn hơn" khi nâng cấp không thuộc bộ đọc — `pack:install` (issue #12) tự kiểm trên hai manifest khi cài, và bộ đọc cố tình không cài bộ so sánh phiên bản.
+
+Cách bộ đọc thực hiện: cấu trúc từng tài liệu được kiểm bằng schema draft 2020-12 thật, nạp trực tiếp `schemas/*.schema.json` qua `Ajv2020` (`allErrors: true`), không cài lại logic schema; BPMN được parse namespace-aware bằng `saxes` và từ chối mọi DOCTYPE/DTD nên không có tham chiếu ngoài nào được nạp hay phân giải; containment của `pack.json`, `units.json` và mọi tệp BPMN được chứng minh trước khi mở tệp, symlink nằm trong gói thì được theo, vượt gói thì từ chối.
