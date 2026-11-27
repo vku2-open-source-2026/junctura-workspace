@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 // Verification of RS256 access tokens issued by the Junctura identity provider
-// (Keycloak) for the portal's public web client. Same approach as the Clinic
-// server: signature keys come from the issuer's JWKS and are cached; an unknown
-// key id triggers one refresh at most every `refreshMs`.
+// (Keycloak) for the portal's public web client. Same approach as the demo
+// servers of the sector stacks: signature keys come from the issuer's JWKS and
+// are cached; an unknown key id triggers one refresh at most every `refreshMs`.
 import { createPublicKey, verify } from "node:crypto";
 
 export class AuthError extends Error {

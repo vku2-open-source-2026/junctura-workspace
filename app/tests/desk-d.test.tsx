@@ -312,7 +312,9 @@ describe("data exchange page", () => {
     await screen.findByText(d.exchange.recentTitle);
     expect(view.container.textContent).toContain(d.exchange.sourceNote);
     expect(view.container.textContent).toContain("Cấp quyền");
-    expect(view.container.textContent).toContain("Điều trị");
+    // Purpose codes are shown as-is: their friendly names are sector data, not portal constants.
+    expect(view.container.textContent).toContain("treatment");
+    expect(view.container.textContent).not.toContain("Điều trị");
     expect(view.container.textContent).toContain("Bị từ chối");
     expect(view.container.textContent).toContain(CLINIC_NAME);
     expect(view.container.textContent).not.toContain("subject-account");

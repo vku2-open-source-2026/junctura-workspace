@@ -1,7 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 Junctura Contributors */
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
- * Design tokens of Junctura Health (no Tailwind import, for apps running their own Tailwind 4).
+ * Design tokens of @junctura/ui (no Tailwind import, for apps running their own Tailwind 4).
  * Values follow Junctura Console (junctura-dxos,
  * console/src/index.css); text tones are darkened where Console's light tokens fall under
  * WCAG 2.2 AA contrast, and tests/contrast.test.ts guards every pair below.
