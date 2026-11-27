@@ -12,9 +12,15 @@
   - **D · Dữ liệu số, Điều hành** (`#/dieu-hanh`): số liệu sống cho Sở Y tế: hồ sơ chờ theo cơ sở, thời gian xử lý, trao đổi dữ liệu (nhật ký chuỗi băm của Tầng 1), bản đồ dữ liệu của từng cơ sở (chỉ số đếm, không nội dung), chia sẻ dữ liệu và năng lực theo hợp đồng.
   - **I · Trí tuệ số**: làm sau.
 
-  Cơ sở của tài khoản lấy từ dữ liệu mẫu `seed/data/accounts.json` của Junctura Health; các trang D, danh bạ và danh sách hồ sơ cần quyền `audit.read` mà `demo:setup` cấp cho tài khoản nhân viên. Link cũ `#/dieu-phoi` chuyển về `#/lam-viec`.
+  Các trang D, danh bạ và danh sách hồ sơ vẫn cần quyền `audit.read` mà `demo:setup` cấp cho tài khoản nhân viên. Link cũ `#/dieu-phoi` chuyển về `#/lam-viec`.
+
+  Danh tính nhân viên lấy từ DX-OS, không còn từ dữ liệu mẫu `seed/data/accounts.json`: backend gọi `GET /v1/identity` của Tầng 1 bằng **bearer người dùng của chính người gọi** (không dùng `identity()` của SDK — lệnh đó xác thực bằng ứng dụng — và không dùng lệnh liệt kê danh bạ của quản trị viên; không có fallback). Cổng nhận `tenantId`, `units`, `unitPaths` và `groups` đã xác minh; tenant phải khớp `JUNCTURA_TENANT`, `sub` của token đã xác minh phải không rỗng và phải khớp **chính xác** `subject` của phản hồi (lệch là 403, không cấp tư cách hay truy cập nào), và mỗi mục `unitPaths` phải ghép đúng mã đơn vị đã quảng bá với đúng đường dẫn `/{tenant}/{unit}` — phản hồi mâu thuẫn là sai hình dạng (503), không cấp truy cập. Đơn vị cổng là đơn vị đã xác minh của người gọi: nếu tư cách thành viên chứa đúng **một** đơn vị mà cổng biết thì đó là đơn vị cổng; người thuộc **nhiều đơn vị** phải chọn rõ qua `?unit=` (chỉ nhận khi tư cách thành viên đã xác minh cho phép), còn thiếu đơn vị, đơn vị lạ hay nhiều đơn vị không chọn đều bị từ chối (403, fail-closed xác định, không phụ thuộc thứ tự). Phản hồi sai hình dạng hay lõi không truy cập được là 503 `junctura_unavailable`, tách biệt với 401/403. Quyền đăng bảng tin không thuộc mọi thành viên `so-y-te`: cần nhóm đã xác minh `/so-y-te/ban-tin`.
 
 Người bệnh không đăng nhập ở đây: họ quản lý đồng thuận trong ứng dụng **Sổ sức khỏe (MyHealth)** của Tầng 3. Chuỗi giao diện tiếng Việt nằm trong `app/src/strings.ts` và `app/src/desk/strings.ts`.
+
+## Cấp tư cách thành viên (provisioning)
+
+Demo cũ của Junctura Health chỉ ghi danh người dùng ở **gốc tenant**, không vào đơn vị nào — cổng đọc đơn vị đã xác minh, nên mỗi tài khoản nhân viên phải được thêm vào đơn vị của mình qua **API Directory của DX-OS** (`POST /v1/directory/units/{unit}/members` bằng bearer ứng dụng backend), ví dụ `tram-y-te`, `benh-vien`, `nha-thuoc`, `bao-hiem`, `so-y-te`. Người quản trị cổng (vai `health-admin` cũ) cần đơn vị `so-y-te` **và** nhóm `ban-tin` của đơn vị đó để đăng bảng tin. Khi triển khai thật, thay tài khoản mẫu bằng người dùng thật của tenant và cấp thành viên theo cùng cách; backend không đọc `seed/` lúc chạy.
 
 ## Backend (`server/`)
 
@@ -25,6 +31,7 @@ Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junc
 | `PORT`, `HOST` | Lắng nghe, mặc định `127.0.0.1:5190` |
 | `JUNCTURA_URL` | Gateway Tầng 1 (HTTPS, hoặc HTTP loopback khi dev) |
 | `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET` | Client backend của ứng dụng `junctura-health-portal` (do `demo:setup` của Junctura Health cấp) |
+| `JUNCTURA_TENANT` | Tenant mà danh tính đã xác minh phải thuộc (tệp env do `demo:setup` tạo đã mang sẵn) |
 | `OIDC_ISSUER` | Issuer mà token phải mang trong `iss` (mặc định lấy `JUNCTURA_ISSUER`) |
 | `OIDC_KEYS_URL` | Tuỳ chọn: nơi lấy JWKS khi issuer không truy cập được từ trong container |
 

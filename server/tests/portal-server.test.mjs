@@ -2,21 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Tests of the Workspace backend. Every route runs against a real
 // HTTP server on the loopback interface with fake dependencies (verifyToken,
-// junctura, fetchExecution, staffFor, now), so nothing here touches the network
+// junctura, fetchExecution, fetchIdentity, now), so nothing here touches the network
 // beyond 127.0.0.1. The JWT verifier is exercised with a freshly generated
-// RSA key, as the real one would.
+// RSA key, as the real one would; staff identity goes through the real
+// `createStaffFor` resolver over a fake `GET /v1/identity`.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { test } from "node:test";
 import { createApp } from "../app.mjs";
 import { AuthError, createVerifier } from "../jwt.mjs";
-import { createStaffFor } from "../staff.mjs";
+import { BOARD_GROUP, createStaffFor, isVerifiedIdentity } from "../staff.mjs";
 
 const NOW = () => new Date("2026-11-19T01:02:03.000Z");
 const STAMP = "2026-11-19T01:02:03.000Z";
 const EXEC = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
 const OTHER = "ffffffff-1111-4222-8333-444444444444";
+const TENANT = "junctura";
 const ADMIN = { username: "quantri.soyte", displayName: "Quản trị Sở Y tế", facility: "so-y-te" };
 const CLINIC = { username: "ysi.tramyte", displayName: "Y sĩ Lê Thi Hoa", facility: "tram-y-te" };
 const AUTH = { authorization: "Bearer good" };
@@ -75,8 +77,24 @@ function fakeJunctura({ lists = {} } = {}) {
   };
 }
 
-function deps({ staff = ADMIN, badToken = false, execution = 200, noStaff = false, ...rest } = {}) {
+/** A `VerifiedIdentity` body as the pinned Foundation contract would answer (`preferredUsername: null` omits it). */
+function identityBody({ tenant = TENANT, units = ["so-y-te"], groups, preferredUsername = "Quản trị Sở Y tế", subject = "login-42" } = {}) {
+  return {
+    subject,
+    tenantId: tenant,
+    roles: ["core-reader"],
+    ...(preferredUsername ? { preferredUsername } : {}),
+    units,
+    unitPaths: units.map(id => ({ id, path: `/${tenant}/${id}` })),
+    groups: groups ?? (units.includes("so-y-te") ? [`/so-y-te/${BOARD_GROUP}`] : []),
+  };
+}
+
+function deps({ staff = ADMIN, units, groups, tenant = TENANT, preferredUsername, subject = "login-42", tokenSub, identityStatus = 200, identityShape, identityDown = false, badToken = false, execution = 200, ...rest } = {}) {
   const junctura = fakeJunctura(rest);
+  const body = identityShape === undefined
+    ? identityBody({ tenant, units: units ?? [staff.facility ?? "so-y-te"], groups, preferredUsername, subject })
+    : identityShape;
   return {
     junctura,
     calls: junctura.calls,
@@ -84,16 +102,30 @@ function deps({ staff = ADMIN, badToken = false, execution = 200, noStaff = fals
     objects: junctura.objects,
     verifyToken: async token => {
       if (badToken || token !== "good") throw new AuthError("nope");
-      return { preferred_username: staff.username, azp: "health-portal-web" };
+      return {
+        ...(tokenSub === null ? {} : { sub: tokenSub ?? subject }),
+        preferred_username: staff.username,
+        azp: "health-portal-web",
+      };
     },
     fetchExecution: async () => ({ ok: execution === 200, status: execution === 200 ? 200 : execution }),
-    staffFor: username => (!noStaff && username === staff.username ? staff : null),
+    fetchIdentity: async token => {
+      if (token !== "good") return { status: 401 };
+      if (identityDown) return { status: 0 };
+      if (identityStatus !== 200) return { status: identityStatus };
+      return { status: 200, body };
+    },
     now: NOW,
   };
 }
 
+/** The app under test: the real Directory resolver over the fake identity answer. */
+function appOf(provided) {
+  return createApp({ ...provided, staffFor: createStaffFor({ expectedTenant: TENANT, fetchIdentity: provided.fetchIdentity }) });
+}
+
 async function withServer(provided, run) {
-  const server = createServer(createApp(provided));
+  const server = createServer(appOf(provided));
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -106,12 +138,103 @@ async function withServer(provided, run) {
 const post = (base, path, body, headers = AUTH) => fetch(new URL(path, base), { method: "POST", headers, body });
 const get = (base, path, headers = AUTH) => fetch(new URL(path, base), { headers });
 
-test("staff are mapped by username with the same role-to-facility table as the frontend", () => {
-  const staffFor = createStaffFor();
-  assert.deepEqual(staffFor("quantri.soyte"), { username: "quantri.soyte", displayName: "Quản trị Sở Y tế", facility: "so-y-te" });
-  assert.equal(staffFor("ysi.tramyte").facility, "tram-y-te");
-  assert.equal(staffFor("benhnhan.an"), null, "patients are never staff");
-  assert.equal(staffFor("khong.ton-tai"), null);
+test("staff identity is the caller's verified Directory identity, unit by unit", async () => {
+  const seen = [];
+  const staffFor = createStaffFor({
+    expectedTenant: TENANT,
+    fetchIdentity: async token => {
+      seen.push(token);
+      return { status: 200, body: identityBody({ units: ["tram-y-te"], preferredUsername: "Y sĩ Lê Thị Hoa" }) };
+    },
+  });
+  const outcome = await staffFor("tok", { sub: "login-42", preferred_username: "ysi.tramyte" }, null);
+  assert.ok(outcome.ok);
+  assert.deepEqual(outcome.staff, { username: "ysi.tramyte", displayName: "Y sĩ Lê Thị Hoa", facility: "tram-y-te", canPublish: false });
+  assert.deepEqual(seen, ["tok"], "the caller's own token, nothing else");
+  const coordinator = createStaffFor({ expectedTenant: TENANT, fetchIdentity: async () => ({ status: 200, body: identityBody() }) });
+  assert.ok((await coordinator("t", { sub: "login-42", preferred_username: "quantri.soyte" }, null)).staff.canPublish, "the verified board group carries the publication right");
+  assert.throws(() => createStaffFor({ fetchIdentity: async () => ({ status: 200 }) }), TypeError, "the expected tenant is required");
+  assert.throws(() => createStaffFor({ expectedTenant: TENANT }), TypeError, "the identity fetch is required");
+});
+
+test("the verified local sub must be nonempty and match the response subject exactly", async () => {
+  const staffFor = createStaffFor({ expectedTenant: TENANT, fetchIdentity: async () => ({ status: 200, body: identityBody() }) });
+  assert.deepEqual(await staffFor("t", { preferred_username: "quantri.soyte" }, null), { ok: false, status: 403, code: "forbidden" }, "no sub, no membership");
+  assert.deepEqual(await staffFor("t", { sub: "", preferred_username: "quantri.soyte" }, null), { ok: false, status: 403, code: "forbidden" }, "an empty sub is no sub");
+  assert.deepEqual(await staffFor("t", { sub: "different-user", preferred_username: "another" }, null), { ok: false, status: 403, code: "forbidden" }, "a token of another subject is not the verified identity, whatever the username says");
+  assert.ok((await staffFor("t", { sub: "login-42", preferred_username: "quantri.soyte" }, null)).ok, "the exact subject match is accepted");
+});
+
+test("a caller of another tenant is refused before any facility is chosen", async () => {
+  const staffFor = createStaffFor({
+    expectedTenant: TENANT,
+    fetchIdentity: async () => ({ status: 200, body: identityBody({ tenant: "tenant-other" }) }),
+  });
+  const outcome = await staffFor("t", { sub: "login-42", preferred_username: "quantri.soyte" }, null);
+  assert.deepEqual(outcome, { ok: false, status: 403, code: "forbidden" });
+});
+
+test("a malformed VerifiedIdentity answer is unusable, not a refusal of the caller", () => {
+  const good = identityBody();
+  const broken = {
+    "not an object": null,
+    "missing subject": { ...good, subject: undefined },
+    "empty tenant": { ...good, tenantId: "" },
+    "roles without core-reader": { ...good, roles: ["core-writer"] },
+    "units not an array": { ...good, units: "so-y-te" },
+    "unit of the wrong shape": { ...good, units: ["So_YTe"] },
+    "unitPaths missing": { ...good, unitPaths: undefined },
+    "unitPath without path": { ...good, unitPaths: [{ id: "so-y-te" }] },
+    "path of another tenant": { ...good, unitPaths: [{ id: "so-y-te", path: "/tenant-other/so-y-te" }] },
+    "path of another unit": { ...good, unitPaths: [{ id: "so-y-te", path: "/junctura/benh-vien" }] },
+    "path of an unadvertised unit": { ...good, unitPaths: [{ id: "benh-vien", path: "/junctura/benh-vien" }] },
+    "unit without its path entry": { ...good, units: ["so-y-te", "benh-vien"] },
+    "duplicate unitPath ids": { ...good, unitPaths: [{ id: "so-y-te", path: "/junctura/so-y-te" }, { id: "so-y-te", path: "/junctura/benh-vien" }] },
+    "groups missing": { ...good, groups: undefined },
+    "group of the wrong shape": { ...good, groups: ["so-y-te/ban-tin"] },
+    "preferredUsername too long": { ...good, preferredUsername: "x".repeat(256) },
+    "an array": [good],
+  };
+  for (const [what, body] of Object.entries(broken)) {
+    assert.equal(isVerifiedIdentity(body), false, what);
+  }
+  assert.ok(isVerifiedIdentity(good));
+  assert.ok(isVerifiedIdentity({ ...good, preferredUsername: undefined }), "preferredUsername stays optional");
+});
+
+test("upstream answers are separated: authorization is passed through, the rest is unavailable", async () => {
+  const cases = [
+    [401, { ok: false, status: 401, code: "unauthorized" }],
+    [403, { ok: false, status: 403, code: "forbidden" }],
+    [404, { ok: false, status: 403, code: "forbidden" }],
+    [400, { ok: false, status: 503, code: "junctura_unavailable" }],
+    [500, { ok: false, status: 503, code: "junctura_unavailable" }],
+    [0, { ok: false, status: 503, code: "junctura_unavailable" }],
+    [200, { ok: false, status: 503, code: "junctura_unavailable" }, { status: 200, body: "không phải json" }],
+  ];
+  for (const [status, expected, answer] of cases) {
+    const staffFor = createStaffFor({ expectedTenant: TENANT, fetchIdentity: async () => answer ?? { status } });
+    assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "quantri.soyte" }, null), expected, `upstream ${status}`);
+  }
+});
+
+test("several verified units fail closed unless the caller names one the membership permits", async () => {
+  const units = ["tram-y-te", "benh-vien", "so-y-te"];
+  const groups = [`/so-y-te/${BOARD_GROUP}`];
+  const staffFor = createStaffFor({
+    expectedTenant: TENANT,
+    fetchIdentity: async () => ({ status: 200, body: identityBody({ units, groups, preferredUsername: undefined }) }),
+  });
+  assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, null), { ok: false, status: 403, code: "forbidden" }, "several units without an explicit choice fail closed, whatever the order");
+  assert.deepEqual((await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "benh-vien")).staff, { username: "ysi", displayName: "Quản trị Sở Y tế", facility: "benh-vien", canPublish: false }, "an explicit unit of the verified membership is honoured");
+  assert.deepEqual((await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "so-y-te")).staff.canPublish, true, "the group right travels with the selected unit");
+  assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "nha-thuoc"), { ok: false, status: 403, code: "forbidden" }, "a unit outside the verified membership is refused");
+  assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "So_YTe"), { ok: false, status: 400, code: "invalid_input" }, "a malformed unit name is bad input");
+  const foreign = createStaffFor({
+    expectedTenant: TENANT,
+    fetchIdentity: async () => ({ status: 200, body: identityBody({ units: ["hoi-dong"] }) }),
+  });
+  assert.deepEqual(await foreign("t", { sub: "login-42", preferred_username: "ysi" }), { ok: false, status: 403, code: "forbidden" }, "a unit the portal does not know is not a facility");
 });
 
 test("GET /api/me answers the staff identity of the token", async () => {
@@ -119,6 +242,33 @@ test("GET /api/me answers the staff identity of the token", async () => {
     const response = await get(base, "/api/me");
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { username: ADMIN.username, displayName: ADMIN.displayName, facility: "so-y-te" });
+  });
+  await withServer(deps({ units: ["tram-y-te", "so-y-te"], groups: [], preferredUsername: null }), async base => {
+    const response = await get(base, "/api/me?unit=tram-y-te");
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { username: ADMIN.username, displayName: ADMIN.username, facility: "tram-y-te" });
+    assert.equal((await get(base, "/api/me")).status, 403, "several units without an explicit choice fail closed");
+    assert.equal((await get(base, "/api/me?unit=benh-vien")).status, 403, "selection outside the verified membership");
+    assert.equal((await get(base, "/api/me?unit=Ban_Dieu_Hanh")).status, 400);
+  });
+});
+
+test("GET /api/me refuses a token whose sub does not match the verified subject", async () => {
+  await withServer(deps({ subject: "core-user" }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 200, "the exact match of sub and subject is accepted");
+  });
+  await withServer(deps({ subject: "core-user", tokenSub: "different-user" }), async base => {
+    const response = await get(base, "/api/me");
+    assert.equal(response.status, 403, "the review scenario: a locally verified token of another sub is not this identity, preferred_username notwithstanding");
+    assert.equal((await response.json()).error, "forbidden");
+  });
+  await withServer(deps({ tokenSub: null }), async base => {
+    const response = await get(base, "/api/me");
+    assert.equal(response.status, 403, "a token without a sub grants nothing");
+    assert.equal((await response.json()).error, "forbidden");
+  });
+  await withServer(deps({ tokenSub: "" }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 403, "an empty sub grants nothing");
   });
 });
 
@@ -128,10 +278,45 @@ test("requests without a token, with a bad token, or from a patient are refused"
     assert.equal((await get(base, "/api/me", { authorization: "Bearer nope" })).status, 401);
     assert.equal((await get(base, "/api/me", { authorization: "good" })).status, 401, "the scheme must be Bearer");
   });
-  await withServer(deps({ staff: { ...ADMIN, username: "benhnhan.an" }, noStaff: true }), async base => {
+  await withServer(deps({ staff: { ...ADMIN, username: "benhnhan.an" }, units: [] }), async base => {
     const response = await get(base, "/api/me");
     assert.equal(response.status, 403);
     assert.equal((await response.json()).error, "forbidden");
+  });
+});
+
+test("a wrong tenant or an unusable identity answer never opens a route", async () => {
+  await withServer(deps({ tenant: "tenant-other" }), async base => {
+    const response = await get(base, "/api/me");
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, "forbidden");
+  });
+  await withServer(deps({ identityDown: true }), async base => {
+    const response = await get(base, "/api/me");
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, "junctura_unavailable");
+  });
+  await withServer(deps({ identityShape: null }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 503, "a malformed body is unavailable, not forbidden");
+    assert.equal((await get(base, "/api/bang-tin")).status, 503);
+  });
+  await withServer(deps({
+    identityShape: { ...identityBody(), unitPaths: [{ id: "so-y-te", path: "/tenant-other/so-y-te" }] },
+  }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 503, "a contradictory path pairing is malformed and grants no access");
+    assert.equal((await get(base, "/api/bang-tin")).status, 503);
+  });
+  await withServer(deps({
+    identityShape: { ...identityBody(), units: ["so-y-te", "benh-vien"] },
+  }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 503, "an advertised unit without its path entry is malformed and grants no access");
+  });
+  await withServer(deps({ identityStatus: 401 }), async base => {
+    assert.equal((await get(base, "/api/me")).status, 401);
+  });
+  await withServer(deps({ identityStatus: 403 }), async base => {
+    const response = await get(base, "/api/me");
+    assert.equal(response.status, 403);
   });
 });
 
@@ -164,6 +349,17 @@ test("POST /api/bang-tin stores an entry authored from the token, and only Sở 
     assert.equal(response.status, 403);
     assert.equal((await response.json()).error, "forbidden");
     assert.equal(provided.records.size, 0);
+  });
+});
+
+test("the board write right is the verified group of Sở Y tế, not mere membership", async () => {
+  await withServer(deps({ groups: [] }), async (base, provided) => {
+    const response = await post(base, "/api/bang-tin", JSON.stringify({ title: "x", body: "y" }), { ...AUTH, "content-type": "application/json" });
+    assert.equal(response.status, 403, "a so-y-te member without the board group may not publish");
+    assert.equal(provided.records.size, 0);
+  });
+  await withServer(deps(), async base => {
+    assert.equal((await post(base, "/api/bang-tin", JSON.stringify({ title: "x", body: "y" }), { ...AUTH, "content-type": "application/json" })).status, 201);
   });
 });
 
@@ -326,7 +522,7 @@ test("the JWT verifier checks RS256 signatures, iss, exp and azp = health-portal
     return `${data}.${Buffer.from(sign("RSA-SHA256", Buffer.from(data), privateKey)).toString("base64url")}`;
   };
   const iss = "https://junctura.studio/identity/realms/junctura";
-  const claims = { iss, exp: now() / 1000 + 300, preferred_username: "quantri.soyte" };
+  const claims = { iss, sub: "login-42", exp: now() / 1000 + 300, preferred_username: "quantri.soyte" };
   assert.deepEqual(await verifier(token({ ...claims, azp: "health-portal-web" })), { ...claims, azp: "health-portal-web" });
   await assert.rejects(verifier(token({ ...claims, azp: "other-client" })), /not issued for this application/, "azp must be the portal web client");
   await assert.rejects(verifier(token({ ...claims, iss: "https://other/issuer" })), /wrong issuer/);

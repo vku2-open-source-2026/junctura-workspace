@@ -4,7 +4,9 @@
 // sign-in. Every dependency is injected, so the router is testable without any
 // network: `verifyToken` (JWKS), `junctura` (the SDK client of the backend
 // application), `fetchExecution` (profile existence on Layer 1 with the caller's
-// token), `staffFor` (seed accounts) and `now`. Errors are `{ error: code }`.
+// token), `staffFor` (the caller's verified Directory identity, resolved with
+// the caller's own token; an optional `?unit=` selects among verified units)
+// and `now`. Errors are `{ error: code }`.
 // Nothing is ever logged here: no tokens, no note or file content.
 import { AuthError } from "./jwt.mjs";
 import { COLLECTIONS, createFile, createNote, createNotice, filesForExecution, latestNotices, notesForExecution, readFile } from "./store.mjs";
@@ -86,13 +88,13 @@ async function readFileBody(req) {
 
 /** The route returns a response, or throws. `token` is the caller's access token. */
 export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now = () => new Date() }) {
-  async function authenticate(req) {
+  async function authenticate(req, url) {
     const match = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ""));
     if (!match) throw new ApiError(401, "unauthorized");
     const claims = await verifyToken(match[1]);
-    const staff = staffFor(claims?.preferred_username);
-    if (!staff) throw new ApiError(403, "forbidden");
-    return { staff, token: match[1] };
+    const outcome = await staffFor(match[1], claims, url.searchParams.get("unit"));
+    if (!outcome.ok) throw new ApiError(outcome.status, outcome.code);
+    return { staff: outcome.staff, token: match[1] };
   }
 
   /** The record must exist on Layer 1, checked with the caller's own token. */
@@ -115,7 +117,7 @@ export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now
     if (path === "/api/bang-tin") {
       if (method === "GET") return [200, { items: await latestNotices(junctura) }];
       if (method === "POST") {
-        if (staff.facility !== "so-y-te") throw new ApiError(403, "forbidden");
+        if (!staff.canPublish) throw new ApiError(403, "forbidden");
         const input = await readJson(req);
         if (!within(input.title, NOTICE_TITLE) || !within(input.body, NOTICE_BODY)) throw new ApiError(400, "invalid_input");
         const notice = await createNotice(junctura, { title: input.title, body: input.body, author: authorOf(staff), createdAt: stamp() });
@@ -173,7 +175,7 @@ export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now
     }
     try {
       if (url.pathname === "/api" || !url.pathname.startsWith("/api/") || url.pathname.includes("//")) return send(res, 404, { error: "not_found" });
-      const caller = await authenticate(req);
+      const caller = await authenticate(req, url);
       const outcome = await route(req, url, caller);
       if (!outcome) return send(res, 404, { error: "not_found" });
       const [status, body, headers] = outcome;

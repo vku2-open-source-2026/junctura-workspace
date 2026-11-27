@@ -11,12 +11,12 @@ Mọi lời gọi DX-OS nêu trong tài liệu được đối chiếu với b�
 
 Repo đang có hai lớp API `/api` cần phân biệt:
 
-**Lớp 1 — route cổng hiện có** (backend nhập từ Junctura Health, xem [PORTAL.md](PORTAL.md)): phục vụ giao diện Cổng, tên tài nguyên tiếng Việt, định danh lấy từ tài khoản mẫu `seed/data/accounts.json` và bộ chuyển vai–đơn vị cứng trong `server/staff.mjs`. Đây là nội dung demo của Cổng, không phải hợp đồng cho app ngoài:
+**Lớp 1 — route cổng hiện có** (backend nhập từ Junctura Health, xem [PORTAL.md](PORTAL.md)): phục vụ giao diện Cổng, tên tài nguyên tiếng Việt, định danh lấy từ danh tính đã xác minh của người gọi qua DX-OS (`GET /v1/identity` bằng bearer người dùng, trong `server/staff.mjs`). Đây là nội dung demo của Cổng, không phải hợp đồng cho app ngoài:
 
 | Route cổng hiện có | Ý nghĩa |
 | --- | --- |
-| `GET /api/me` | Tài khoản demo đang đăng nhập (từ seed, không qua DX-OS) |
-| `GET`/`POST` `/api/bang-tin` | Bảng tin phối hợp; đăng chỉ với đơn vị `so-y-te` |
+| `GET /api/me` | Danh tính đã xác minh của người gọi (DX-OS `GET /v1/identity` bằng bearer người dùng; đơn vị là tư cách thành viên đã xác minh) |
+| `GET`/`POST` `/api/bang-tin` | Bảng tin phối hợp; đăng chỉ với tư cách thành viên `so-y-te` kèm nhóm đã xác minh `/so-y-te/ban-tin` |
 | `GET`/`POST` `/api/ho-so/{executionId}/ghi-chu` | Ghi chú trên hồ sơ |
 | `GET`/`POST` `/api/ho-so/{executionId}/tep` | Tệp đính kèm trên hồ sơ |
 | `GET /api/tep/{fileId}` | Tải tệp đính kèm |
