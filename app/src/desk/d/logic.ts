@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { isMedicalKey, type ExecutionItem } from "../data";
+import type { ExecutionItem } from "../data";
 
 // ---------------------------------------------------------------- shapes from Core
 
@@ -131,12 +131,13 @@ export interface DurationStats {
   max: number | null;
 }
 
-/** Median and longest processing time per medical workflow key; other keys stay out. */
-export const durationStatsByWorkflow = (items: readonly ExecutionItem[]): readonly DurationStats[] => {
+/** Median and longest processing time per pack workflow key; other keys stay out. */
+export const durationStatsByWorkflow = (items: readonly ExecutionItem[], packKeys: readonly string[]): readonly DurationStats[] => {
+  const keys = new Set(packKeys);
   const durations = new Map<string, number[]>();
   for (const item of items) {
     const key = item.definition?.key ?? "";
-    if (!isMedicalKey(key)) continue;
+    if (!keys.has(key)) continue;
     if (item.status !== "completed") continue;
     const started = item.startedAt == null ? Number.NaN : Date.parse(item.startedAt);
     const updated = item.updatedAt == null ? Number.NaN : Date.parse(item.updatedAt);

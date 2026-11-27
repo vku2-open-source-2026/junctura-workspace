@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Facility } from "./context";
-import type { Urgency } from "./data";
+/** Strings of the shared workspace, in plain Vietnamese. Labels of the pack's
+ * own things (record types, workflows, steps, role groups, unit types, form
+ * fields) come from the pack and are not repeated here. */
 
-/** Strings of the shared health spaces, in plain Vietnamese. */
 export const deskStrings = {
-  product: "Cổng Junctura Health",
+  product: "Cổng Junctura Workspace",
   nav: {
     desk: "Không gian làm việc",
     spaces: "Không gian",
@@ -23,12 +23,12 @@ export const deskStrings = {
   },
   today: {
     title: "Hôm nay",
-    lead: "Việc của cơ sở bạn hôm nay trên Cổng Junctura Health.",
+    lead: "Việc của đơn vị bạn hôm nay trên Cổng Junctura Workspace.",
     greeting: "Chào",
-    waitingMine: "Việc đang chờ cơ sở bạn",
-    waitingNone: "Không có việc nào đang chờ cơ sở bạn.",
-    openedByYou: "Hồ sơ cơ sở bạn đã mở",
-    openedNone: "Cơ sở bạn chưa có hồ sơ nào đang chạy.",
+    waitingMine: "Việc đang chờ đơn vị bạn",
+    waitingNone: "Không có việc nào đang chờ đơn vị bạn.",
+    openedByYou: "Hồ sơ đơn vị bạn đã mở",
+    openedNone: "Đơn vị bạn chưa có hồ sơ nào đang chạy.",
     latestNotices: "Tin mới nhất từ Bảng tin",
     allNotices: "Xem Bảng tin",
     viewCase: "Xem hồ sơ",
@@ -38,10 +38,10 @@ export const deskStrings = {
   },
   notices: {
     title: "Bảng tin",
-    lead: "Tin của Sở Y tế cho các cơ sở trên Cổng Junctura Health.",
+    lead: "Tin của đơn vị điều phối cho các đơn vị trên Cổng Junctura Workspace.",
     empty: "Chưa có tin nào.",
     formTitle: "Đăng tin mới",
-    formNote: "Tin của Sở Y tế đến mọi cơ sở tham gia không gian. Không ghi thông tin người bệnh vào tin.",
+    formNote: "Tin của đơn vị điều phối đến mọi đơn vị tham gia không gian. Không ghi dữ liệu chuyên môn vào tin.",
     titleLabel: "Tiêu đề",
     titleHint: "Từ 1 đến 120 ký tự.",
     bodyLabel: "Nội dung",
@@ -49,7 +49,7 @@ export const deskStrings = {
     submit: "Đăng tin",
     submitting: "Đang đăng…",
     invalid: "Hãy kiểm tra tiêu đề (1–120 ký tự) và nội dung (1–2000 ký tự).",
-    publishForbidden: "Chỉ Sở Y tế đăng được tin.",
+    publishForbidden: "Chỉ đơn vị điều phối đăng được tin.",
     failed: "Không đăng được tin. Hãy thử lại.",
     posted: "Đã đăng tin.",
     count: "tin",
@@ -76,46 +76,35 @@ export const deskStrings = {
     completed: "Hoàn tất",
     cancelled: "Đã huỷ",
   },
-  urgency: {
-    thuong: "Thường",
-    khan: "Khẩn",
-    "cap-cuu": "Cấp cứu",
-    column: "Mức khẩn",
-  },
   cases: {
     title: "Danh sách hồ sơ",
-    lead: "Các hồ sơ liên thông đang chạy và đã kết thúc trên Junctura. Mỗi hồ sơ chỉ mang mã tham chiếu, không chứa dữ liệu người bệnh.",
+    lead: "Các hồ sơ liên thông đang chạy và đã kết thúc trên Junctura, thuộc các quy trình của gói đã cài. Mỗi hồ sơ chỉ mang mã tham chiếu, không chứa dữ liệu chuyên môn.",
     code: "Mã hồ sơ",
     workflow: "Quy trình",
     status: "Trạng thái",
     currentStep: "Bước hiện tại",
     updated: "Cập nhật",
     statusAll: "Tất cả",
-    mineOnly: "Chỉ việc của cơ sở tôi",
+    mineOnly: "Chỉ việc của đơn vị tôi",
     none: "Không có hồ sơ nào.",
     noStep: "—",
     openCase: "Mở hồ sơ mới",
   },
   openCase: {
     title: "Mở hồ sơ liên thông",
-    lead: "Cơ sở của bạn mở hồ sơ liên thông trên Junctura; các cơ sở khác xử lý các bước tiếp theo.",
+    lead: "Đơn vị của bạn mở hồ sơ liên thông trên Junctura; các đơn vị khác xử lý các bước tiếp theo.",
     workflow: "Quy trình",
     reference: "Mã tham chiếu",
-    referenceHint: "Chữ hoa, số và dấu gạch, tối đa 32 ký tự, bắt đầu bằng một chữ cái (ví dụ CT-123456).",
+    referenceHint: "Chữ hoa, số và dấu gạch, tối đa 32 ký tự, bắt đầu bằng một chữ cái (ví dụ CH-123456).",
     referenceInvalid: "Mã tham chiếu không hợp lệ: dùng chữ hoa, số và dấu gạch, tối đa 32 ký tự, bắt đầu bằng một chữ cái.",
-    urgency: "Mức khẩn",
-    coSoNhan: "Cơ sở nhận",
-    coSoNhanHint: "Cơ sở nhận hồ sơ sau khi mở; chọn trong các cơ sở tham gia quy trình.",
-    coSoNhanEmpty: "—",
-    ghiChu: "Ghi chú",
-    ghiChuHint: "Tối đa 300 ký tự.",
-    ghiChuLong: "Ghi chú tối đa 300 ký tự.",
-    noWorkflow: "Cơ sở của bạn không mở được quy trình nào. Hồ sơ liên thông do trạm y tế, nhà thuốc hoặc bảo hiểm mở.",
+    requiredEmpty: "Hãy điền các trường bắt buộc của biểu mẫu.",
+    noWorkflow: "Tài khoản của bạn không mở được quy trình nào. Các quy trình của gói được mở bởi các nhóm khai báo trong gói.",
+    unsupportedFields: "Trường tệp chỉ có ở các bước xử lý, chưa dùng khi mở hồ sơ:",
     submit: "Mở hồ sơ",
     submitting: "Đang mở…",
-    noPatientNote:
-      "Không nhập thông tin người bệnh vào đây: hồ sơ liên thông chỉ mang mã tham chiếu, dữ liệu y tế nằm trong các hồ sơ của cơ sở.",
-    forbidden: "Tài khoản chưa được cấp quyền mở hồ sơ liên thông. Liên hệ quản trị Sở Y tế để được cấp quyền.",
+    noSensitiveNote:
+      "Không nhập dữ liệu nhạy cảm vào đây: hồ sơ liên thông chỉ mang mã tham chiếu, dữ liệu chuyên môn nằm trong các hồ sơ của đơn vị.",
+    forbidden: "Tài khoản chưa được cấp quyền mở hồ sơ liên thông. Liên hệ đơn vị điều phối để được cấp quyền.",
     failed: "Không mở được hồ sơ. Hãy thử lại.",
   },
   detail: {
@@ -123,36 +112,33 @@ export const deskStrings = {
     backToList: "Về danh sách hồ sơ",
     status: "Trạng thái",
     reference: "Mã tham chiếu",
-    openedBy: "Cơ sở mở hồ sơ",
+    openedBy: "Đơn vị mở hồ sơ",
     workflow: "Quy trình",
     steps: "Các bước",
     stepDone: "Đã qua",
     stepCurrent: "Đang ở bước này",
     stepFuture: "Chưa tới",
-    stepNoGroups: "Không có cơ sở phụ trách",
-    responsible: "Cơ sở phụ trách",
+    stepNoGroups: "Không có nhóm phụ trách",
+    responsible: "Nhóm phụ trách",
     currentStep: "Bước hiện tại",
     completeStep: "Hoàn tất bước",
     confirmTitle: "Hoàn tất bước này?",
     confirmDescription:
-      "Bước này sẽ được đánh dấu là đã làm xong và hồ sơ chuyển sang bước tiếp theo của quy trình. Chỉ làm khi công việc của cơ sở bạn tại bước này đã thực sự xong.",
+      "Bước này sẽ được đánh dấu là đã làm xong và hồ sơ chuyển sang bước tiếp theo của quy trình. Chỉ làm khi công việc của đơn vị bạn tại bước này đã thực sự xong.",
     confirmLabel: "Xác nhận hoàn tất",
     completing: "Đang hoàn tất…",
-    readonly: "Sở Y tế theo dõi toàn bộ hồ sơ, không thực hiện bước của cơ sở.",
+    readonly: "Tài khoản của bạn không thuộc nhóm nào phụ trách hồ sơ này; bạn chỉ xem được.",
     notFound: "Không tìm thấy hồ sơ liên thông. Hồ sơ có thể đã bị xoá hoặc bạn không có quyền xem.",
     updated: "Cập nhật",
     form: {
-      title: "Biểu mẫu số hóa",
-      mucKhan: "Mức khẩn",
-      coSoNhan: "Cơ sở nhận",
-      ghiChu: "Ghi chú",
+      title: "Dữ liệu mở hồ sơ",
       none: "—",
     },
     notes: {
       title: "Trao đổi",
-      lead: "Ghi chú trao đổi giữa các cơ sở trong hồ sơ này.",
+      lead: "Ghi chú trao đổi giữa các đơn vị trong hồ sơ này.",
       input: "Nhập ghi chú",
-      inputHint: "Từ 1 đến 1000 ký tự. Không ghi thông tin người bệnh vào đây.",
+      inputHint: "Từ 1 đến 1000 ký tự. Không ghi dữ liệu nhạy cảm vào đây.",
       submit: "Gửi ghi chú",
       submitting: "Đang gửi…",
       empty: "Chưa có ghi chú nào.",
@@ -182,13 +168,15 @@ export const deskStrings = {
     loading: "Đang tải",
     loadFailed: "Có lỗi xảy ra",
     forbiddenTitle: "Bạn chưa có quyền xem nội dung này",
-    forbidden: "Tài khoản chưa được cấp quyền xem hồ sơ liên thông. Liên hệ quản trị Sở Y tế để được cấp quyền.",
+    forbidden: "Tài khoản chưa được cấp quyền xem hồ sơ liên thông. Liên hệ đơn vị điều phối để được cấp quyền.",
     notFoundTitle: "Không tìm thấy hồ sơ",
     notFound: "Hồ sơ không tồn tại hoặc đã bị xoá. Hãy kiểm tra lại từ danh sách hồ sơ.",
     networkTitle: "Không kết nối được Junctura",
     network: "Máy chủ không phản hồi. Kiểm tra mạng và thử lại.",
     generic: "Đã xảy ra lỗi không xác định. Hãy thử lại.",
     retry: "Thử lại",
+    packTitle: "Không tải được dữ liệu gói ngành",
+    pack: "Máy chủ chưa trả lời được về gói đã cài. Hãy tải lại trang để thử lại.",
     notFoundPage: "Trang không tồn tại trong không gian này.",
     notFoundPageAction: "Về Hôm nay",
   },
@@ -202,20 +190,3 @@ export const statusLabel: Readonly<Record<ExecutionStatus, string>> = {
   completed: deskStrings.status.completed,
   cancelled: deskStrings.status.cancelled,
 };
-
-/** Friendly label for an urgency value sent in the digital form; unknown values stay as-is. */
-export const urgencyLabel = (value: string): string => {
-  const urgency = value as Urgency;
-  return urgency in deskStrings.urgency ? deskStrings.urgency[urgency] : value;
-};
-
-/** Friendly names for the facility groups; unknown codes stay as-is. */
-const FACILITY_LABELS: Readonly<Record<Facility, string>> = {
-  "tram-y-te": "Trạm y tế",
-  "benh-vien": "Bệnh viện",
-  "nha-thuoc": "Nhà thuốc",
-  "bao-hiem": "Bảo hiểm",
-  "so-y-te": "Sở Y tế",
-};
-
-export const facilityLabel = (facility: string): string => FACILITY_LABELS[facility as Facility] ?? facility;

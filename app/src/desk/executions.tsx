@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, formatDateTime, type Tone } from "@junctura/health-ui";
+import { Badge, formatDateTime, type Tone } from "@junctura/ui";
+import { labelOf, usePack } from "../pack/data";
 import { useDesk } from "./context";
-import { inputUrgency, isMedicalKey, type ExecutionItem, type ExecutionList } from "./data";
+import { isPackKey, waitsForStaff, type ExecutionItem, type ExecutionList } from "./data";
 import { DeskPage } from "./layout";
 import { DeskEmpty, DeskError, DeskLoading } from "./states";
-import { deskStrings as s, facilityLabel, statusLabel, urgencyLabel, type ExecutionStatus } from "./strings";
+import { deskStrings as s, statusLabel, type ExecutionStatus } from "./strings";
 
 const STATUS_FILTERS: readonly { value: ExecutionStatus | "all"; label: string }[] = [
   { value: "all", label: s.cases.statusAll },
@@ -22,8 +23,9 @@ const STATUS_TONES: Readonly<Record<ExecutionStatus, Tone>> = {
   cancelled: "neutral",
 };
 
-/** Case list: the execution history filtered to the three shared medical workflows. */
+/** Case list: the execution history filtered to the workflows of the installed pack. */
 export function ExecutionsPage() {
+  const pack = usePack();
   const { api, staff } = useDesk();
   const [status, setStatus] = useState<ExecutionStatus | "all">("all");
   const [mineOnly, setMineOnly] = useState(false);
@@ -35,15 +37,14 @@ export function ExecutionsPage() {
     setItems(null);
     const query = status === "all" ? "/v1/workflows/executions?limit=100" : `/v1/workflows/executions?limit=100&status=${status}`;
     return api.getJson<ExecutionList>(query)
-      .then(list => setItems(list.items.filter(item => isMedicalKey(item.definition.key))))
+      .then(list => setItems(list.items.filter(item => isPackKey(pack, item.definition.key))))
       .catch(setError);
-  }, [api, status]);
+  }, [api, status, pack]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const shown = (items ?? []).filter(item => !mineOnly || item.currentStep?.groups?.includes(staff.facility) === true);
-  // The engine history list carries no input; the column appears only when it ever does.
-  const withUrgency = (items ?? []).some(item => inputUrgency(item) !== null);
+  const label = labelOf(pack);
+  const shown = (items ?? []).filter(item => !mineOnly || waitsForStaff(item, staff));
 
   return (
     <DeskPage title={s.cases.title} lead={s.cases.lead} current="/ho-so">
@@ -88,7 +89,6 @@ export function ExecutionsPage() {
                 <th scope="col" className="px-4 py-3 font-medium">{s.cases.workflow}</th>
                 <th scope="col" className="px-4 py-3 font-medium">{s.cases.status}</th>
                 <th scope="col" className="px-4 py-3 font-medium">{s.cases.currentStep}</th>
-                {withUrgency && <th scope="col" className="px-4 py-3 font-medium">{s.urgency.column}</th>}
                 <th scope="col" className="px-4 py-3 font-medium">{s.cases.updated}</th>
               </tr>
             </thead>
@@ -106,23 +106,13 @@ export function ExecutionsPage() {
                         {item.currentStep.name}
                         <span className="block text-xs text-muted">
                           <span className="sr-only">{s.cases.currentStep}: </span>
-                          {(item.currentStep.groups ?? []).map(facilityLabel).join(", ")}
+                          {(item.currentStep.groups ?? []).map(label).join(", ")}
                         </span>
                       </>
                     ) : (
                       <span className="text-muted">{s.cases.noStep}</span>
                     )}
                   </td>
-                  {withUrgency && (
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const urgency = inputUrgency(item);
-                        return urgency
-                          ? <Badge tone={urgency === "cap-cuu" ? "danger" : urgency === "khan" ? "warn" : "neutral"}>{urgencyLabel(urgency)}</Badge>
-                          : <span className="text-muted">{s.cases.noStep}</span>;
-                      })()}
-                    </td>
-                  )}
                   <td className="px-4 py-3 text-ink-2">{formatDateTime(item.updatedAt)}</td>
                 </tr>
               ))}

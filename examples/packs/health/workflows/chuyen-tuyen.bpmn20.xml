@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/health">
-  <process id="chuyen-tuyen" isExecutable="true">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="https://junctura.studio/workspace/health">
+  <process id="chuyen-tuyen" name="Chuyển tuyến" isExecutable="true">
     <startEvent id="start" name="Phòng khám gửi bệnh nhân" />
-    <userTask id="tiep-nhan-benh-nhan" name="Tiếp nhận bệnh nhân" />
-    <userTask id="kham-va-chi-dinh" name="Khám và chỉ định" />
-    <userTask id="phan-hoi-ket-qua" name="Phản hồi kết quả về phòng khám" />
+    <userTask id="tiep-nhan-benh-nhan" name="Tiếp nhận bệnh nhân" flowable:candidateGroups="y-ta" />
+    <userTask id="kham-va-chi-dinh" name="Khám và chỉ định" flowable:candidateGroups="bac-si" />
+    <userTask id="phan-hoi-ket-qua" name="Phản hồi kết quả về phòng khám" flowable:candidateGroups="bac-si" />
     <endEvent id="end" name="Hoàn tất" />
+    <sequenceFlow id="f1" sourceRef="start" targetRef="tiep-nhan-benh-nhan" />
+    <sequenceFlow id="f2" sourceRef="tiep-nhan-benh-nhan" targetRef="kham-va-chi-dinh" />
+    <sequenceFlow id="f3" sourceRef="kham-va-chi-dinh" targetRef="phan-hoi-ket-qua" />
+    <sequenceFlow id="f4" sourceRef="phan-hoi-ket-qua" targetRef="end" />
   </process>
 </definitions>

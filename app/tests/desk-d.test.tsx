@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
-import { DeskProvider, type DeskApi, type DeskStaff } from "../src/desk";
+import { type DeskApi } from "../src/desk";
 import { DATA_ROUTES, dataPageFor } from "../src/desk/d";
 import {
   durationStatsByWorkflow,
@@ -16,8 +16,8 @@ import {
 } from "../src/desk/d/logic";
 import { dataStrings as d, eventLabel } from "../src/desk/d/strings";
 import type { ExecutionItem, ExecutionList, WorkflowSummary } from "../src/desk/data";
-import { CONTRACT_VIEWS } from "../src/space/data";
-import { deskStrings as s, facilityLabel } from "../src/desk/strings";
+import { deskStrings as s } from "../src/desk/strings";
+import { EDUCATION_PACK, renderDeskPack, staffOf } from "./helpers";
 
 afterEach(() => { window.location.hash = ""; });
 
@@ -43,14 +43,10 @@ const makeApi = (get: (path: string) => unknown): { api: DeskApi; gets: string[]
   };
 };
 
-const staffOf = (facility: DeskStaff["facility"]): DeskStaff => ({
-  username: `nv-${facility}`,
-  displayName: "Trần Sở Y Tế",
-  facility,
-});
+const COORDINATOR = staffOf("so-y-te", ["/so-y-te/ban-tin"], true);
 
 const renderPage = (page: ReactNode, api: DeskApi) =>
-  render(<DeskProvider staff={staffOf("so-y-te")} api={api} signOut={() => {}}>{page}</DeskProvider>);
+  renderDeskPack(EDUCATION_PACK, COORDINATOR, page, api);
 
 // ---------------------------------------------------------------- fixtures
 
@@ -79,13 +75,13 @@ const STATS: AppStats = {
 const SUMMARY: WorkflowSummary = {
   definitions: [
     {
-      key: "junctura_chuyen_tuyen", name: "Chuyển tuyến khám chữa bệnh", application: null,
-      steps: [{ name: "Tiếp nhận ở Trạm y tế", owner: "tram-y-te" }, { name: "Bác sĩ bệnh viện duyệt", owner: "benh-vien" }],
+      key: "chuyentruong", name: "Chuyển trường", application: null,
+      steps: [{ name: "Tiếp nhận hồ sơ", owner: "phong-giao-duc" }, { name: "Xét duyệt chuyển trường", owner: "phong-giao-duc" }],
       counts: { running: 2, completed: 5, cancelled: 1 }, updatedAt: "2026-11-19T08:00:00Z",
     },
     {
-      key: "junctura_xac_minh_don_thuoc", name: "Xác minh đơn thuốc", application: null,
-      steps: [{ name: "Nhà thuốc gửi yêu cầu", owner: "nha-thuoc" }], counts: { running: 0, completed: 3, cancelled: 0 },
+      key: "capbansaohocba", name: "Cấp bản sao học bạ", application: null,
+      steps: [{ name: "Tiếp nhận yêu cầu", owner: "truong" }], counts: { running: 0, completed: 3, cancelled: 0 },
     },
   ],
   totals: { definitions: 2, running: 2, completed: 8, cancelled: 1 },
@@ -95,7 +91,7 @@ const hoursAgo = (hours: number): string => new Date(Date.now() - hours * 3_600_
 
 const runningItem = (id: string, groups: string[], updatedAt: string): ExecutionItem => ({
   id,
-  definition: { id: "def-ct", key: "junctura_chuyen_tuyen", name: "Chuyển tuyến khám chữa bệnh", version: 1 },
+  definition: { id: "def-ct", key: "chuyentruong", name: "Chuyển trường", version: 1 },
   status: "running",
   startedAt: hoursAgo(30),
   updatedAt,
@@ -115,19 +111,19 @@ const completedItem = (id: string, key: string, startedAt: string, updatedAt: st
 
 const RUNNING: ExecutionList = {
   items: [
-    runningItem("e1", ["tram-y-te"], hoursAgo(1)),
-    runningItem("e2", ["tram-y-te"], hoursAgo(25)),
-    runningItem("e3", ["benh-vien"], hoursAgo(2)),
+    runningItem("e1", ["phong-giao-duc"], hoursAgo(1)),
+    runningItem("e2", ["phong-giao-duc"], hoursAgo(25)),
+    runningItem("e3", ["truong"], hoursAgo(2)),
   ],
 };
 
 const COMPLETED: ExecutionList = {
   items: [
-    completedItem("c1", "junctura_chuyen_tuyen", hoursAgo(10), hoursAgo(8)),
-    completedItem("c2", "junctura_chuyen_tuyen", hoursAgo(9), hoursAgo(7)),
-    completedItem("c3", "junctura_chuyen_tuyen", hoursAgo(6), hoursAgo(3)),
-    completedItem("c4", "junctura_xac_minh_don_thuoc", hoursAgo(4), hoursAgo(2)),
-    completedItem("c5", "junctura_khong_y_te", hoursAgo(4), hoursAgo(1)),
+    completedItem("c1", "chuyentruong", hoursAgo(10), hoursAgo(8)),
+    completedItem("c2", "chuyentruong", hoursAgo(9), hoursAgo(7)),
+    completedItem("c3", "chuyentruong", hoursAgo(6), hoursAgo(3)),
+    completedItem("c4", "capbansaohocba", hoursAgo(4), hoursAgo(2)),
+    completedItem("c5", "quy-trinh-le", hoursAgo(4), hoursAgo(1)),
   ],
 };
 
@@ -198,35 +194,35 @@ describe("waiting per facility", () => {
   it("groups running cases by current-step groups and counts the ones older than 24 hours", () => {
     const waiting = waitingByFacility(RUNNING.items, new Date());
     expect(waiting).toEqual([
-      { facility: "tram-y-te", total: 2, overdue: 1 },
-      { facility: "benh-vien", total: 1, overdue: 0 },
+      { facility: "phong-giao-duc", total: 2, overdue: 1 },
+      { facility: "truong", total: 1, overdue: 0 },
     ]);
   });
 
   it("treats a missing updatedAt as overdue", () => {
-    const item = runningItem("e4", ["nha-thuoc"], hoursAgo(1));
+    const item = runningItem("e4", ["truong"], hoursAgo(1));
     const waiting = waitingByFacility([{ ...item, updatedAt: null }], new Date());
-    expect(waiting[0]).toEqual({ facility: "nha-thuoc", total: 1, overdue: 1 });
+    expect(waiting[0]).toEqual({ facility: "truong", total: 1, overdue: 1 });
   });
 });
 
 describe("processing time", () => {
   it("computes the median and the maximum per medical workflow key", () => {
-    const stats = durationStatsByWorkflow(COMPLETED.items);
+    const stats = durationStatsByWorkflow(COMPLETED.items, ["chuyentruong", "capbansaohocba"]);
     const byKey = new Map(stats.map(entry => [entry.key, entry]));
-    expect(byKey.get("junctura_chuyen_tuyen")).toMatchObject({ count: 3, median: 2 * 3_600_000, max: 3 * 3_600_000 });
-    expect(byKey.get("junctura_xac_minh_don_thuoc")).toMatchObject({ count: 1, median: 2 * 3_600_000, max: 2 * 3_600_000 });
+    expect(byKey.get("chuyentruong")).toMatchObject({ count: 3, median: 2 * 3_600_000, max: 3 * 3_600_000 });
+    expect(byKey.get("capbansaohocba")).toMatchObject({ count: 1, median: 2 * 3_600_000, max: 2 * 3_600_000 });
   });
 
   it("only reports the three medical keys", () => {
-    const stats = durationStatsByWorkflow(COMPLETED.items);
-    expect(stats.map(entry => entry.key).sort()).toEqual(["junctura_chuyen_tuyen", "junctura_xac_minh_don_thuoc"]);
+    const stats = durationStatsByWorkflow(COMPLETED.items, ["chuyentruong", "capbansaohocba"]);
+    expect(stats.map(entry => entry.key).sort()).toEqual(["capbansaohocba", "chuyentruong"]);
   });
 });
 
 describe("audit classification", () => {
   it("labels the known execution events and counts by family", () => {
-    expect(eventLabel("execution.subject_accessed")).toBe("Thực thi năng lực (có người bệnh ghi nhận)");
+    expect(eventLabel("execution.subject_accessed")).toBe("Thực thi năng lực (chủ dữ liệu bị truy cập)");
     expect(eventLabel("execution.emergency_access")).toBe("Truy cập cấp cứu");
     expect(eventLabel("grant.activated")).toBe("Cấp quyền");
     expect(eventFamilyCounts(AUDIT.items)).toEqual([
@@ -254,19 +250,19 @@ describe("data overview page", () => {
     renderPage(dataPageFor("/dieu-hanh")!, api.api);
     expect(api.gets[0]).toBe("/v1/workflows/summary");
     await screen.findByText(d.overview.waitingTitle);
-    expect(screen.getByText(facilityLabel("tram-y-te"))).toBeTruthy();
-    expect(screen.getByText(facilityLabel("benh-vien"))).toBeTruthy();
+    expect(screen.getAllByText("Phòng Giáo dục").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Trường học").length).toBeGreaterThan(0);
     expect(screen.getByText(`1 ${d.overview.overdue}`)).toBeTruthy();
     expect(screen.getByText(d.overview.activeApps)).toBeTruthy();
     expect(screen.getByText(d.overview.updatedAt)).toBeTruthy();
   });
 
-  it("shows the per-workflow table with steps and facilities", async () => {
+  it("shows the per-workflow table with steps and unit types", async () => {
     const view = renderPage(dataPageFor("/dieu-hanh")!, overviewApi().api);
-    await screen.findByText("Chuyển tuyến khám chữa bệnh");
-    expect(screen.getByText("Bác sĩ bệnh viện duyệt")).toBeTruthy();
-    expect(view.container.textContent).toContain("Tiếp nhận ở Trạm y tế");
-    expect(view.container.textContent).toContain("Trạm y tế");
+    await screen.findAllByText("Chuyển trường");
+    expect(screen.getAllByText("Xét duyệt chuyển trường").length).toBeGreaterThan(0);
+    expect(view.container.textContent).toContain("Tiếp nhận hồ sơ");
+    expect(view.container.textContent).toContain("Phòng Giáo dục");
     expect(screen.getByText(d.overview.columnFacilities)).toBeTruthy();
   });
 
@@ -396,33 +392,30 @@ describe("data map page", () => {
 // ---------------------------------------------------------------- D · Chia sẻ và danh mục
 
 describe("data sharing and catalog page", () => {
-  it("lists every contract with provider, consumers, purposes, version and emergency access", async () => {
-    const api = makeApi(path => (path.includes("applications/stats") ? STATS : {}));
-    const dom = renderPage(dataPageFor("/dieu-hanh/chia-se")!, api.api);
+  it("lists every record type of the pack with its description and pack version", async () => {
+    const dom = renderPage(dataPageFor("/dieu-hanh/chia-se")!, makeApi(() => ({})).api);
     await screen.findByText(d.catalog.title);
-    expect(api.gets).toEqual(["/v1/applications/stats"]);
-    for (const contract of CONTRACT_VIEWS) {
-      expect(screen.getByRole("link", { name: contract.title }).getAttribute("href")).toBe(`#/hop-dong/${contract.slug}`);
-      expect(dom.container.textContent).toContain(contract.version);
-      expect(dom.container.textContent).toContain(contract.providerName);
+    for (const recordType of EDUCATION_PACK.recordTypes) {
+      expect(screen.getByRole("link", { name: recordType.name }).getAttribute("href")).toBe(`#/hop-dong/${recordType.id}`);
+      expect(dom.container.textContent).toContain(EDUCATION_PACK.pack.version);
     }
-    expect(screen.getAllByText(d.catalog.emergencyYes).length).toBe(
-      CONTRACT_VIEWS.filter(entry => entry.emergencyAccess).length);
+    expect(dom.container.textContent).toContain("Học sinh xin chuyển tới trường khác");
     expect(dom.container.textContent).toContain(d.sharing.consoleNote);
   });
 
-  it("builds the provider-to-consumer flows with the 24h call counts", async () => {
-    const api = makeApi(path => (path.includes("applications/stats") ? STATS : {}));
-    const dom = renderPage(dataPageFor("/dieu-hanh/chia-se")!, api.api);
+  it("builds the sender-to-receiver flows from the pack workflows", async () => {
+    const dom = renderPage(dataPageFor("/dieu-hanh/chia-se")!, makeApi(() => ({})).api);
     await screen.findByText(d.sharing.flowTitle);
-    expect(dom.container.textContent).toContain(CLINIC_NAME);
-    expect(dom.container.textContent).toContain(HOSPITAL_NAME);
-    expect(dom.container.textContent).toContain("2 / 1");
-    expect(dom.container.textContent).toContain(d.sharing.callsHint);
+    expect(dom.container.textContent).toContain("Phòng Giáo dục");
+    expect(dom.container.textContent).toContain("Trường học");
+    expect(dom.container.textContent).toContain("Chuyển trường");
+    expect(dom.container.textContent).toContain("Cấp bản sao học bạ");
   });
 
-  it("renders the 403 message when the statistics refuse", async () => {
-    renderPage(dataPageFor("/dieu-hanh/chia-se")!, makeApi(() => failure(403, null)).api);
-    await screen.findByText(s.errors.forbidden);
+  it("never calls an engine route on this page", async () => {
+    const api = makeApi(() => ({}));
+    renderPage(dataPageFor("/dieu-hanh/chia-se")!, api.api);
+    await screen.findByText(d.catalog.title);
+    expect(api.gets).toEqual([]);
   });
 });

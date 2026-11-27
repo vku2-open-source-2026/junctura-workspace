@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Card } from "@junctura/health-ui";
+import { Badge, Card } from "@junctura/ui";
 import { useDesk } from "./context";
 import { DeskPage } from "./layout";
 import { DeskEmpty, DeskError, DeskLoading } from "./states";

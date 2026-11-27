@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, ConfirmDialog, TextAreaField, formatDateTime, formatNumber, type Tone } from "@junctura/health-ui";
+import { Badge, Button, ConfirmDialog, TextAreaField, formatDateTime, formatNumber, type Tone } from "@junctura/ui";
+import { actorIdsOf, labelOf, usePack } from "../pack/data";
 import { isDeskApiError, useDesk } from "./context";
 import {
-  urgencyOf,
-  waitsForFacility,
-  workflowFor,
+  waitsForStaff,
   type CaseNote,
   type ExecutionDetail,
   type ExecutionItem,
@@ -18,7 +17,7 @@ import {
 } from "./data";
 import { DeskPage } from "./layout";
 import { DeskError, DeskLoading } from "./states";
-import { deskStrings as s, facilityLabel, statusLabel, urgencyLabel, type ExecutionStatus } from "./strings";
+import { deskStrings as s, statusLabel, type ExecutionStatus } from "./strings";
 
 const STATUS_TONES: Readonly<Record<ExecutionStatus, Tone>> = {
   running: "brand",
@@ -26,8 +25,22 @@ const STATUS_TONES: Readonly<Record<ExecutionStatus, Tone>> = {
   cancelled: "neutral",
 };
 
+/**
+ * Case detail: the workflow steps with progress, the complete action, the
+ * opener's input with the pack's field labels, the notes and the attachments.
+ */
+
+/** One readable line of the opener's input: pack label when known, raw key otherwise. */
+const InputLine = ({ label, value }: { label: string; value: string }) => (
+  <div>
+    <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+    <dd className="mt-0.5 whitespace-pre-line text-sm">{value}</dd>
+  </div>
+);
+
 /** Case detail: the workflow steps with progress, the complete action, the form fields, the notes and the attachments. */
 export function CaseDetailPage({ id }: { id: string }) {
+  const pack = usePack();
   const { api, staff } = useDesk();
   const [detail, setDetail] = useState<ExecutionDetail | null>(null);
   const [item, setItem] = useState<ExecutionItem | null>(null);
@@ -80,17 +93,25 @@ export function CaseDetailPage({ id }: { id: string }) {
     );
   }
 
-  const workflow = workflowFor(item?.definition.key ?? "");
+  const label = labelOf(pack);
+  const workflow = pack && item ? pack.workflows.find(candidate => candidate.id === item.definition.key) : undefined;
   const currentName = item?.currentStep?.name ?? null;
-  // Only the user tasks are steps people work on; start and end events are not shown.
-  const taskSteps = workflow ? workflow.steps.filter(step => step.kind === "userTask") : [];
-  const currentIndex = currentName === null || !workflow ? -1 : taskSteps.findIndex(step => step.name === currentName);
-  const canComplete = item != null && waitsForFacility(item, staff.facility);
+  // The manifest steps are the presentation order; the engine names the current step as the BPMN task name.
+  const steps = workflow?.steps ?? [];
+  const currentIndex = currentName === null || !workflow ? -1 : steps.findIndex(step => step.name === currentName);
+  const canComplete = item != null && waitsForStaff(item, staff);
+  // Readonly view for accounts none of whose actor ids any step of this workflow ever names.
+  const actors = actorIdsOf(staff);
+  const involved = workflow != null && steps.some(step => actors.includes(step.role));
   const openedBy = typeof detail.input?.openedBy === "string" ? detail.input.openedBy : null;
   const reference = typeof detail.input?.reference === "string" ? detail.input.reference : null;
-  const mucKhan = urgencyOf(detail.input?.mucKhan);
-  const coSoNhan = typeof detail.input?.coSoNhan === "string" ? detail.input.coSoNhan : null;
-  const ghiChu = typeof detail.input?.ghiChu === "string" ? detail.input.ghiChu : null;
+  const openFields = workflow ? workflow.open.form.fields : [];
+  const extraInput = openFields
+    .filter(field => field.type !== "file" && detail.input != null && typeof detail.input[field.id] === "string" && field.id !== "reference" && field.id !== "openedBy")
+    .map(field => ({ id: field.id, label: field.label, value: String(detail.input?.[field.id]) }));
+  const unlabelledInput = detail.input == null ? [] : Object.entries(detail.input)
+    .filter(([key, value]) => typeof value === "string" && key !== "reference" && key !== "openedBy" && !openFields.some(field => field.id === key))
+    .map(([key, value]) => ({ id: key, label: key, value: String(value) }));
 
   return (
     <DeskPage title={s.detail.title} current={`/ho-so/${id}`}>
@@ -108,7 +129,7 @@ export function CaseDetailPage({ id }: { id: string }) {
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.openedBy}</dt>
-            <dd className="mt-0.5 text-sm">{openedBy ? facilityLabel(openedBy) : "—"}</dd>
+            <dd className="mt-0.5 text-sm">{openedBy ? label(openedBy) : "—"}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.workflow}</dt>
@@ -126,7 +147,7 @@ export function CaseDetailPage({ id }: { id: string }) {
             {item.currentStep.assignee ? ` (${item.currentStep.assignee})` : ""}
           </p>
         )}
-        {staff.facility === "so-y-te" && <p className="mt-4 text-sm text-muted">{s.detail.readonly}</p>}
+        {workflow && !involved && <p className="mt-4 text-sm text-muted">{s.detail.readonly}</p>}
         {canComplete && (
           <div className="mt-5">
             <Button onClick={() => setConfirming(true)} loading={completing}>
@@ -139,18 +160,15 @@ export function CaseDetailPage({ id }: { id: string }) {
       <div className="mt-6 rounded-lg border border-line bg-surface p-5 shadow-card">
         <h3 className="text-base font-semibold">{s.detail.form.title}</h3>
         <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.form.mucKhan}</dt>
-            <dd className="mt-0.5 text-sm">{mucKhan ? urgencyLabel(mucKhan) : s.detail.form.none}</dd>
-          </div>
-          <div>
-            <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.form.coSoNhan}</dt>
-            <dd className="mt-0.5 text-sm">{coSoNhan ? facilityLabel(coSoNhan) : s.detail.form.none}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.form.ghiChu}</dt>
-            <dd className="mt-0.5 whitespace-pre-line text-sm">{ghiChu ?? s.detail.form.none}</dd>
-          </div>
+          {extraInput.concat(unlabelledInput).map(line => (
+            <InputLine key={line.id} label={line.label} value={line.value} />
+          ))}
+          {extraInput.length === 0 && unlabelledInput.length === 0 && (
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-muted">{s.detail.form.none}</dt>
+              <dd className="mt-0.5 text-sm">{s.detail.form.none}</dd>
+            </div>
+          )}
         </dl>
       </div>
 
@@ -158,7 +176,7 @@ export function CaseDetailPage({ id }: { id: string }) {
         <div className="mt-6 rounded-lg border border-line bg-surface p-5 shadow-card">
           <h3 className="text-base font-semibold">{s.detail.steps}</h3>
           <ol className="mt-4 space-y-3">
-            {taskSteps.map((step, index) => {
+            {steps.map((step, index) => {
               const done = detail.status === "completed" || (currentIndex >= 0 && index < currentIndex);
               const current = detail.status === "running" && index === currentIndex;
               return (
@@ -184,7 +202,7 @@ export function CaseDetailPage({ id }: { id: string }) {
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       <span className="sr-only">{s.detail.responsible}: </span>
-                      {step.groups.length > 0 ? step.groups.map(facilityLabel).join(", ") : s.detail.stepNoGroups}
+                      {label(step.role)}
                     </p>
                   </div>
                 </li>
@@ -215,6 +233,7 @@ export function CaseDetailPage({ id }: { id: string }) {
 /** P · Trao đổi: the exchange notes of the case, oldest first, plus the input for a new note. */
 function CaseNotes({ id }: { id: string }) {
   const { api } = useDesk();
+  const pack = usePack();
   const [notes, setNotes] = useState<readonly CaseNote[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [text, setText] = useState("");
@@ -247,6 +266,8 @@ function CaseNotes({ id }: { id: string }) {
     }
   };
 
+  const label = labelOf(pack);
+
   return (
     <div className="rounded-lg border border-line bg-surface shadow-card">
       <header className="border-b border-line px-5 py-3">
@@ -266,7 +287,7 @@ function CaseNotes({ id }: { id: string }) {
               <li key={note.id} className="rounded-lg border border-line bg-surface-2 px-4 py-3">
                 <p className="whitespace-pre-line text-sm">{note.text}</p>
                 <p className="mt-1 text-xs text-muted">
-                  {note.author.displayName} · {facilityLabel(note.author.facility)} · {formatDateTime(note.createdAt)}
+                  {note.author.displayName} · {label(note.author.facility)} · {formatDateTime(note.createdAt)}
                 </p>
               </li>
             ))}

@@ -8,11 +8,10 @@ export {
   type DeskApi,
   type DeskApiError,
   type DeskStaff,
-  type Facility,
 } from "./context";
 export { DESK_ROUTES, type DeskSpaceRoute } from "./routes";
 export { deskPageFor, isDeskRoute, DeskRedirect, DeskNotFound } from "./pages";
-export { deskStrings, facilityLabel, statusLabel, urgencyLabel } from "./strings";
+export { deskStrings, statusLabel } from "./strings";
 export { TodayPage } from "./today";
 export { NoticesPage } from "./notices";
 export { DirectoryPage } from "./directory";

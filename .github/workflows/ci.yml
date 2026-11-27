@@ -42,7 +42,10 @@ jobs:
           revision=$(cat .junctura-health-version)
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
           echo "ref=$revision" >> "$GITHUB_OUTPUT"
-      - name: Check out Junctura Health build inputs
+      # The Health checkout is a CI input for exactly one thing: checking the
+      # pinned real Health pack through readPack (scripts/check-health-pack.mjs).
+      # The portal itself builds from this repository alone.
+      - name: Check out the pinned Junctura Health pack
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: vku2-open-source-2026/junctura-health
@@ -50,11 +53,6 @@ jobs:
           path: .junctura-health
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            /ui/
-            /contracts/
-            /demo/plan.mjs
-            /workflows/
-            /seed/data/accounts.json
             /pack/
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -62,7 +60,6 @@ jobs:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: |
-            .junctura-health/ui/package-lock.json
             packages/ui/package-lock.json
             server/package-lock.json
             app/package-lock.json
@@ -79,10 +76,8 @@ jobs:
           npm --prefix server test
       - name: Check the pinned Junctura Health pack
         run: node scripts/check-health-pack.mjs
-      - name: Install the shared UI and frontend dependencies
-        run: |
-          npm --prefix .junctura-health/ui ci --prefer-offline --no-audit --no-fund
-          npm --prefix app ci --prefer-offline --no-audit --no-fund
+      - name: Install the frontend dependencies
+        run: npm --prefix app ci --prefer-offline --no-audit --no-fund
       - name: Typecheck, test and build the frontend
         run: |
           npm --prefix app run typecheck

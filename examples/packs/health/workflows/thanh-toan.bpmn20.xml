@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/health">
-  <process id="thanh-toan" isExecutable="true">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="https://junctura.studio/workspace/health">
+  <process id="thanh-toan" name="Thanh toán" isExecutable="true">
     <startEvent id="start" name="Bệnh viện lập hồ sơ chi" />
-    <userTask id="lap-ho-so-chi" name="Lập hồ sơ chi" />
-    <userTask id="duyet-thanh-toan" name="Duyệt thanh toán" />
+    <userTask id="lap-ho-so-chi" name="Lập hồ sơ chi" flowable:candidateGroups="tai-chinh" />
+    <userTask id="duyet-thanh-toan" name="Duyệt thanh toán" flowable:candidateGroups="lanh-dao" />
     <endEvent id="end" name="Hoàn tất" />
+    <sequenceFlow id="f1" sourceRef="start" targetRef="lap-ho-so-chi" />
+    <sequenceFlow id="f2" sourceRef="lap-ho-so-chi" targetRef="duyet-thanh-toan" />
+    <sequenceFlow id="f3" sourceRef="duyet-thanh-toan" targetRef="end" />
   </process>
 </definitions>

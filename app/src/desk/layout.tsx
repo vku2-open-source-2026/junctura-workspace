@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ReactNode } from "react";
-import { AppShell, type NavGroup } from "@junctura/health-ui";
+import { AppShell, type NavGroup } from "@junctura/ui";
 import {
   ArrowLeftRight, BookUser, ClipboardList, Database, FilePlus2, LayoutDashboard, Megaphone, Network, Sun,
 } from "lucide-react";
+import { labelOf, usePack } from "../pack/data";
 import { DESK_ROUTES } from "./routes";
-import { deskStrings as s, facilityLabel } from "./strings";
+import { deskStrings as s } from "./strings";
 import { useDesk } from "./context";
 
 const ICONS: Record<string, ReactNode> = {
@@ -41,6 +42,7 @@ function menuItemFor(current: string | undefined): string {
  */
 export function DeskPage({ title, lead, current, children }: { title: string; lead?: string; current?: string; children: ReactNode }) {
   const { staff, signOut } = useDesk();
+  const pack = usePack();
   const item = menuItemFor(current);
   const extra = current && current !== item ? [title] : undefined;
   return (
@@ -49,7 +51,7 @@ export function DeskPage({ title, lead, current, children }: { title: string; le
       nav={NAV}
       current={item}
       onNavigate={id => { window.location.hash = `#${id}`; }}
-      user={{ name: staff.displayName, unit: facilityLabel(staff.facility) }}
+      user={{ name: staff.displayName, unit: labelOf(pack)(staff.facility) }}
       onSignOut={signOut}
       breadcrumbs={extra}
     >

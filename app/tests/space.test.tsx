@@ -1,154 +1,166 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CONTRACTS } from "@junctura/health-contracts";
-import { APPS } from "../src/health-demo-apps";
-import chuyenTuyenXml from "@junctura/health-workflows/chuyen-tuyen.bpmn20.xml?raw";
-import xacMinhChiPhiXml from "@junctura/health-workflows/xac-minh-chi-phi.bpmn20.xml?raw";
-import xacMinhDonThuocXml from "@junctura/health-workflows/xac-minh-don-thuoc.bpmn20.xml?raw";
-import { ContractDetailPage, ContractsPage, FacilitiesPage, SPACE_ROUTES, WorkflowsPage } from "../src/space";
-import { CONTRACT_VIEWS, contractView, facilityView, parseWorkflow, WORKFLOWS } from "../src/space/data";
+import { recordTypeCatalog, recordTypeDetail } from "../src/catalog";
+import { RecordTypeDetailPage, RecordTypesPage, SPACE_ROUTES, UnitsPage, WorkflowsPage } from "../src/space";
 import { spaceStrings as s } from "../src/space/strings";
+import { EDUCATION_PACK, HEALTH_PACK, renderPack, workflowOf } from "./helpers";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("BPMN parsing", () => {
-  const RAW_XML = [chuyenTuyenXml, xacMinhDonThuocXml, xacMinhChiPhiXml];
-
-  it("parses all three workflow files into process id, name and ordered steps", () => {
-    expect(WORKFLOWS).toHaveLength(3);
-    expect(WORKFLOWS.map(workflow => workflow.id)).toEqual(["junctura_chuyen_tuyen", "junctura_xac_minh_don_thuoc", "junctura_xac_minh_chi_phi"]);
-    for (const xml of RAW_XML) {
-      const workflow = parseWorkflow(xml);
-      expect(workflow.name.length).toBeGreaterThan(0);
-      expect(workflow.steps[0]?.kind).toBe("startEvent");
-      expect(workflow.steps.at(-1)?.kind).toBe("endEvent");
-      for (const step of workflow.steps.slice(1, -1)) {
-        expect(step.kind).toBe("userTask");
-        expect(step.name.length).toBeGreaterThan(0);
-        expect(step.groups.length).toBeGreaterThan(0);
+describe("workflow diagrams projected from the canonical packs", () => {
+  it("keeps every business node with the acting groups, in document order", () => {
+    for (const pack of [EDUCATION_PACK, HEALTH_PACK]) {
+      for (const workflow of pack.workflows) {
+        expect(workflow.diagram.nodes[0]?.kind).toBe("start");
+        expect(workflow.diagram.nodes.at(-1)?.kind).toBe("end");
+        for (const node of workflow.diagram.nodes) {
+          expect(["start", "task", "gateway", "end"]).toContain(node.kind);
+          if (node.kind === "task") {
+            expect(node.name.length).toBeGreaterThan(0);
+            expect(node.groups?.length ?? 0).toBeGreaterThan(0);
+          }
+        }
       }
     }
+    expect(workflowOf(HEALTH_PACK, "chuyen-tuyen").diagram.nodes.find(node => node.id === "tiep-nhan-benh-nhan")?.groups).toEqual(["y-ta"]);
+    expect(workflowOf(EDUCATION_PACK, "chuyentruong").diagram.nodes.find(node => node.id === "tiep-nhan-ho-so")?.groups).toEqual(["van-thu"]);
   });
 
-  it("keeps every step in flow order with the acting candidate groups", () => {
-    for (const xml of RAW_XML) {
-      const workflow = parseWorkflow(xml);
-      expect(workflow.steps).toHaveLength(5); // start, three user tasks, end
-      const userTasks = new DOMParser().parseFromString(xml, "application/xml").getElementsByTagName("userTask").length;
-      expect(workflow.steps.filter(step => step.kind === "userTask")).toHaveLength(userTasks);
-      const ids = workflow.steps.map(step => step.id);
-      expect(new Set(ids).size).toBe(ids.length); // the walk never revisits a node
-    }
-    expect(WORKFLOWS.some(workflow => workflow.steps.some(step => step.groups.includes("tram-y-te")))).toBe(true);
-    expect(WORKFLOWS.some(workflow => workflow.steps.some(step => step.groups.includes("nha-thuoc")))).toBe(true);
-    expect(WORKFLOWS.some(workflow => workflow.steps.some(step => step.groups.includes("bao-hiem")))).toBe(true);
+  it("preserves every edge, including the two rejection routes of the education transfer", () => {
+    const transfer = workflowOf(EDUCATION_PACK, "chuyentruong");
+    expect(transfer.diagram.nodes.map(node => node.kind)).toEqual(["start", "task", "gateway", "task", "gateway", "task", "end", "end", "end"]);
+    const intake = transfer.diagram.edges.filter(edge => edge.from === "quyet-dinh-tiep-nhan");
+    expect(intake.map(edge => edge.to)).toEqual(["xet-duyet", "end-tu-choi-tiep-nhan"]);
+    expect(intake.map(edge => edge.label)).toEqual(["Tiếp nhận hồ sơ", "Từ chối tiếp nhận"]);
+    const review = transfer.diagram.edges.filter(edge => edge.from === "quyet-dinh-xet-duyet");
+    expect(review.map(edge => edge.label)).toEqual(["Chấp nhận chuyển trường", "Không chấp nhận"]);
+    expect(JSON.stringify(EDUCATION_PACK)).not.toContain("decision ==");
   });
 
-  it("returns an empty workflow for input without a process", () => {
-    expect(parseWorkflow("<definitions/>")).toEqual({ id: "", name: "", steps: [] });
-  });
-});
-
-describe("contract data", () => {
-  it("summarises every contract with flat input and output field lists", () => {
-    expect(CONTRACT_VIEWS.map(view => view.slug)).toEqual(CONTRACTS.map(contract => contract.slug));
-    for (const contract of CONTRACTS) {
-      const view = contractView(contract.slug);
-      expect(view).toBeTruthy();
-      const fieldsOf = (schema: typeof contract.inputSchema) =>
-        schema.type === "object"
-          ? Object.entries(schema.properties).map(([name, field]) => ({
-              name, type: field.type === "array" ? `array<${field.items.type}>` : field.type,
-              required: schema.required.includes(name), description: field.description,
-            }))
-          : [];
-      expect(view?.inputs).toEqual(fieldsOf(contract.inputSchema));
-      expect(view?.outputs).toEqual(fieldsOf(contract.outputSchema));
-      expect(view?.providerName).toBeTruthy();
-      expect(view?.sideEffects).toBe(contract.sideEffects.description);
-      expect(view?.timeoutMs).toBe(contract.timeoutMs);
-    }
+  it("walks the happy path from the start event for progress displays", () => {
+    expect(workflowOf(EDUCATION_PACK, "chuyentruong").diagram.path).toEqual([
+      "start", "tiep-nhan-ho-so", "quyet-dinh-tiep-nhan", "xet-duyet", "quyet-dinh-xet-duyet", "thong-bao-ket-qua", "end",
+    ]);
+    expect(workflowOf(HEALTH_PACK, "chuyen-tuyen").diagram.path).toEqual([
+      "start", "tiep-nhan-benh-nhan", "kham-va-chi-dinh", "phan-hoi-ket-qua", "end",
+    ]);
   });
 
-  it("gives no view for an unknown slug", () => {
-    expect(contractView("khong-ton-tai")).toBeUndefined();
-  });
-
-  it("lists every demo facility with the capabilities it provides and uses", () => {
-    const facilities = facilityView();
-    expect(facilities.map(facility => facility.appId).sort()).toEqual(APPS.map(app => app.name).sort());
-    for (const facility of facilities) {
-      expect(facility.provides.map(item => item.slug)).toEqual(CONTRACTS.filter(c => c.provider === facility.appId).map(c => c.slug));
-      expect(facility.uses.map(item => item.slug)).toEqual(CONTRACTS.filter(c => c.consumers.includes(facility.appId as never)).map(c => c.slug));
-    }
+  it("diverges for the health pack: a linear flow with unlabelled edges and no gateways", () => {
+    const referral = workflowOf(HEALTH_PACK, "chuyen-tuyen");
+    expect(referral.diagram.nodes.map(node => node.kind)).toEqual(["start", "task", "task", "task", "end"]);
+    expect(referral.diagram.edges.every(edge => edge.label == null)).toBe(true);
   });
 });
 
-describe("contracts list page", () => {
-  it("shows every contract as a card linking to its detail route", () => {
-    render(<ContractsPage />);
-    for (const view of CONTRACT_VIEWS) {
-      const link = document.querySelector<HTMLAnchorElement>(`a[href="#/hop-dong/${view.slug}"]`);
-      expect(link?.textContent).toContain(view.title);
-    }
-    expect(screen.getByRole("heading", { name: s.contracts.title })).toBeTruthy();
+describe("case-type catalog", () => {
+  it("lists each pack's record types with their workflow counts", () => {
+    expect(recordTypeCatalog(EDUCATION_PACK).map(entry => entry.id)).toEqual(["chuyen-truong", "cap-ban-sao-hoc-ba"]);
+    expect(recordTypeCatalog(EDUCATION_PACK).map(entry => entry.workflowCount)).toEqual([1, 1]);
+    expect(recordTypeCatalog(HEALTH_PACK).map(entry => entry.id)).toEqual(["chuyen-tuyen", "thanh-toan"]);
+    expect(recordTypeCatalog(HEALTH_PACK).map(entry => entry.name)).toEqual(["Hồ sơ chuyển tuyến", "Hồ sơ thanh toán"]);
+  });
+
+  it("builds the library detail with diagram, forms, groups and SLA", () => {
+    const detail = recordTypeDetail(EDUCATION_PACK, "chuyen-truong")!;
+    expect(detail.workflows).toHaveLength(1);
+    const view = detail.workflows[0];
+    expect(view.diagram.path).toEqual([
+      "start", "tiep-nhan-ho-so", "quyet-dinh-tiep-nhan", "xet-duyet", "quyet-dinh-xet-duyet", "thong-bao-ket-qua", "end",
+    ]);
+    expect(view.openFields.map(field => field.id)).toEqual(["ho-ten-hoc-sinh", "lop-hien-tai", "truong-chuyen-den"]);
+    expect(view.steps.map(step => step.deadlineDays)).toEqual([2, 5, 3]);
+    expect(view.steps[0].decisions.map(decision => decision.outcome)).toEqual(["approve", "reject"]);
+    expect(view.steps[0].decisions[1].requiresReason).toBe(true);
+    expect(view.workflow.senderGroups).toEqual(["hoc-vu"]);
+    expect(view.workflow.receiverGroups).toEqual(["van-thu", "lanh-dao", "hoc-vu"]);
+  });
+
+  it("gives no detail for an id the pack does not declare", () => {
+    expect(recordTypeDetail(EDUCATION_PACK, "khong-ton-tai")).toBeUndefined();
   });
 });
 
-describe("contract detail page", () => {
-  it.each(CONTRACTS.map(contract => contract.slug))("shows every field of %s", slug => {
-    const contract = CONTRACTS.find(item => item.slug === slug);
-    const view = contractView(slug);
-    if (!contract || !view) throw new Error("missing contract");
-    render(<ContractDetailPage slug={slug} />);
-    expect(screen.getByRole("heading", { name: contract.title, level: 1 })).toBeTruthy();
-    expect(screen.getByText(`${contract.timeoutMs} ms`)).toBeTruthy();
-    expect(screen.getByText(contract.provider)).toBeTruthy();
-    for (const name of contract.consumers) expect(screen.getByText(name)).toBeTruthy();
-    for (const purpose of contract.purposes) expect(screen.getByText(purpose)).toBeTruthy();
-    for (const side of [view.inputs, view.outputs]) {
-      for (const field of side) {
-        expect(screen.getAllByText(field.name).length).toBeGreaterThan(0);
-        expect(screen.getAllByText(field.description ?? "—").length).toBeGreaterThan(0);
-      }
+describe("record types list page", () => {
+  it("shows every record type of the served pack as a card linking to its detail route", () => {
+    renderPack(EDUCATION_PACK, <RecordTypesPage />);
+    for (const entry of recordTypeCatalog(EDUCATION_PACK)) {
+      const link = document.querySelector<HTMLAnchorElement>(`a[href="#/hop-dong/${entry.id}"]`);
+      expect(link?.textContent).toContain(entry.name);
     }
+    expect(screen.getByRole("heading", { name: s.types.title })).toBeTruthy();
   });
 
-  it("falls back to a not-found state for an unknown slug", () => {
-    render(<ContractDetailPage slug="khong-ton-tai" />);
-    expect(screen.getByText(s.contract.notFoundTitle)).toBeTruthy();
-    expect(screen.getByText(s.contract.notFoundLead)).toBeTruthy();
-    expect(screen.getByRole("button", { name: s.contract.backToList })).toBeTruthy();
+  it("shows the other pack's record types from the same page component", () => {
+    renderPack(HEALTH_PACK, <RecordTypesPage />);
+    expect(screen.getByText("Hồ sơ chuyển tuyến")).toBeTruthy();
+    expect(screen.queryByText("Hồ sơ chuyển trường")).toBeNull();
+  });
+});
+
+describe("record type detail page", () => {
+  it("shows the diagram, open form, step forms, SLA and allowed groups", () => {
+    const view = renderPack(EDUCATION_PACK, <RecordTypeDetailPage slug="chuyen-truong" />);
+    expect(screen.getByRole("heading", { name: "Hồ sơ chuyển trường", level: 1 })).toBeTruthy();
+    expect(screen.getAllByText("Tiếp nhận hồ sơ").length).toBeGreaterThan(1); // diagram step, form caption and decision share the label
+    expect(screen.getAllByText("Xét duyệt chuyển trường").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("Họ tên học sinh").length).toBeGreaterThan(0);
+    expect(view.container.textContent).toContain(`Hạn xử lý: 5 ${s.type.slaDays}`);
+    expect(screen.getAllByText("Học vụ").length).toBeGreaterThan(0);
+    expect(screen.getByText("Văn thư")).toBeTruthy();
+    expect(screen.getByText("Lãnh đạo đơn vị")).toBeTruthy();
+    expect(screen.getByText("Phòng Giáo dục")).toBeTruthy();
+    // Both gateway outcomes of the transfer flow stay visible, with the
+    // user-facing decision labels resolved from the manifest.
+    expect(screen.getAllByText("Từ chối tiếp nhận").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Không chấp nhận").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Chấp nhận chuyển trường").length).toBeGreaterThan(0);
+  });
+
+  it("renders the health pack's record type from the same component", () => {
+    const view = renderPack(HEALTH_PACK, <RecordTypeDetailPage slug="chuyen-tuyen" />);
+    expect(screen.getAllByText("Tiếp nhận bệnh nhân").length).toBeGreaterThan(1); // diagram step, form caption and decision share the label
+    expect(screen.getAllByText("Y tá").length).toBeGreaterThan(0);
+    expect(view.container.textContent).toContain("Chuyển tuyến trên"); // a select option of the pack's own form
+    expect(screen.queryByText("Hồ sơ chuyển trường")).toBeNull();
+  });
+
+  it("falls back to a not-found state for an unknown id", () => {
+    renderPack(EDUCATION_PACK, <RecordTypeDetailPage slug="khong-ton-tai" />);
+    expect(screen.getByText(s.type.notFoundTitle)).toBeTruthy();
+    expect(screen.getByText(s.type.notFoundLead)).toBeTruthy();
+    expect(screen.getByRole("button", { name: s.type.backToList })).toBeTruthy();
   });
 });
 
 describe("workflows page", () => {
-  it("lists the three workflows with numbered steps and acting groups", () => {
-    render(<WorkflowsPage />);
-    for (const workflow of WORKFLOWS) {
+  it("lists the pack workflows with numbered steps and acting groups", () => {
+    renderPack(HEALTH_PACK, <WorkflowsPage />);
+    for (const workflow of HEALTH_PACK.workflows) {
       expect(screen.getByRole("heading", { name: workflow.name })).toBeTruthy();
-      expect(screen.getAllByText(`${workflow.steps.length} ${s.workflows.stepCount}`)).toHaveLength(WORKFLOWS.length);
     }
-    expect(screen.getByText(`Nhóm thực hiện: Trạm y tế`)).toBeTruthy();
-    expect(screen.getByText(`Nhóm thực hiện: Nhà thuốc`)).toBeTruthy();
-    expect(screen.getByText(`Nhóm thực hiện: Bảo hiểm y tế`)).toBeTruthy();
-    expect(screen.getAllByText(`Nhóm thực hiện: Bệnh viện`).length).toBe(6); // two hospital steps in each of the three flows
+    expect(screen.getByText(`Nhóm thực hiện: Y tá`)).toBeTruthy();
+    expect(screen.getAllByText(`Nhóm thực hiện: Bác sĩ`).length).toBe(2);
+    expect(screen.getAllByText(`Nhóm thực hiện: Tài chính`).length).toBe(1);
+  });
+
+  it("renders the education pack instead from the same component", () => {
+    renderPack(EDUCATION_PACK, <WorkflowsPage />);
+    expect(screen.getByText(`Nhóm thực hiện: Văn thư`)).toBeTruthy();
+    expect(screen.queryByText(`Nhóm thực hiện: Y tá`)).toBeNull();
   });
 });
 
-describe("facilities page", () => {
-  it("shows every facility with links to the contracts it provides and uses", () => {
-    render(<FacilitiesPage />);
-    for (const app of APPS) {
-      expect(screen.getByRole("heading", { name: app.displayName })).toBeTruthy();
-      const card = screen.getByText(app.displayName).closest("li");
-      expect(card).toBeTruthy();
+describe("units page", () => {
+  it("shows every unit type with the workflows it opens and receives", () => {
+    renderPack(HEALTH_PACK, <UnitsPage />);
+    for (const unitType of HEALTH_PACK.unitTypes) {
+      expect(screen.getByRole("heading", { name: unitType.name })).toBeTruthy();
     }
-    for (const view of CONTRACT_VIEWS) {
-      expect(document.querySelector(`a[href="#/hop-dong/${view.slug}"]`)).toBeTruthy();
-    }
+    expect(screen.getAllByRole("link", { name: "Chuyển tuyến" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Thanh toán" }).length).toBeGreaterThan(0);
   });
 });
 
@@ -160,13 +172,13 @@ describe("routes", () => {
 });
 
 describe("no network", () => {
-  it("no space page calls fetch", () => {
+  it("no library page calls fetch", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<ContractsPage />);
-    render(<WorkflowsPage />);
-    render(<FacilitiesPage />);
-    for (const view of CONTRACT_VIEWS) render(<ContractDetailPage slug={view.slug} />);
+    renderPack(EDUCATION_PACK, <RecordTypesPage />);
+    renderPack(EDUCATION_PACK, <WorkflowsPage />);
+    renderPack(EDUCATION_PACK, <UnitsPage />);
+    for (const entry of recordTypeCatalog(EDUCATION_PACK)) renderPack(EDUCATION_PACK, <RecordTypeDetailPage slug={entry.id} />);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
