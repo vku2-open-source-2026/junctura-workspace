@@ -56,8 +56,16 @@ jobs:
           cache: npm
           cache-dependency-path: |
             .junctura-health/ui/package-lock.json
+            packages/ui/package-lock.json
             server/package-lock.json
             app/package-lock.json
+      - name: Typecheck, test, build and pack @junctura/ui
+        run: |
+          npm --prefix packages/ui ci --prefer-offline --no-audit --no-fund
+          npm --prefix packages/ui run typecheck
+          npm --prefix packages/ui test
+          npm --prefix packages/ui run build
+          npm pack ./packages/ui --pack-destination "$RUNNER_TEMP"
       - name: Install and test the backend
         run: |
           npm --prefix server ci --prefer-offline --no-audit --no-fund
