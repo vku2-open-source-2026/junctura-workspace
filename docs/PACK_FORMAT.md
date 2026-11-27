@@ -12,7 +12,7 @@ Gói ngành là thứ cung cấp nhãn, vai trò, nhóm, loại đơn vị, lo�
   workflows/*.bpmn20.xml  Quy trình BPMN 2.0, một tệp cho mỗi quy trình
 ```
 
-Cặp gói mẫu của Workspace nằm ở `examples/packs/education/` (Giáo dục) và `examples/packs/health/` (Y tế). Cả hai chỉ chứa dữ liệu tổng hợp, không có người hay đơn vị thật. Gói Y tế thật của Junctura Health vẫn giữ ở kho `junctura-health` theo [PLAN.md](PLAN.md) và phải tuân theo đặc tả này.
+Cặp gói mẫu của Workspace nằm ở `examples/packs/education/` (Giáo dục) và `examples/packs/health/` (Y tế). Cả hai chỉ chứa dữ liệu tổng hợp, không có người hay đơn vị thật. Gói Y tế thật của Junctura Health vẫn giữ ở kho `junctura-health` theo [PLAN.md](PLAN.md) và phải tuân theo đặc tả này: Workspace ghim đúng bản Health tương ứng trong `.junctura-health-version`, CI checkout cả `pack/` và kiểm gói thật qua `readPack` bằng `scripts/check-health-pack.mjs` — đối chiếu HEAD của checkout với bản ghim và cả mã gói `health` cùng hai khóa định nghĩa thật (`recordTypes`, `workflows`; danh sách nhóm và loại đơn vị của gói không được ghim) và dừng khi bản ghim không phải SHA đầy đủ, HEAD không khớp bản ghim, gói thiếu hoặc sai.
 
 ## Kiểm tra hợp đồng
 

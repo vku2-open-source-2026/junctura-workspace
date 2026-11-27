@@ -22,13 +22,14 @@ Các lệnh dưới đây khớp với workflow `Checks` trong `.github/workflow
 | `docker compose config --quiet` | Kiểm tra cấu hình Compose |
 | `npm --prefix server ci` | Cài phụ thuộc backend |
 | `npm --prefix server test` | Chạy kiểm thử backend |
+| `node scripts/check-health-pack.mjs` | Kiểm gói Y tế thật trong checkout Junctura Health ghim (cần `.junctura-health/`) |
 | `npm --prefix .junctura-health/ui ci` | Cài phụ thuộc shared UI của Junctura Health (cần `.junctura-health/`) |
 | `npm --prefix app ci` | Cài phụ thuộc frontend |
 | `npm --prefix app run typecheck` | Kiểm tra kiểu frontend |
 | `npm --prefix app test` | Chạy kiểm thử frontend |
 | `npm --prefix app run build` | Build frontend |
 
-Trên GitHub, CI tự checkout Junctura Health ở phiên bản ghim trong `.junctura-health-version`. Khi chạy cục bộ, hãy chuẩn bị `.junctura-health/` theo [docs/PORTAL.md](docs/PORTAL.md) trước khi chạy các lệnh frontend.
+Trên GitHub, CI tự checkout Junctura Health ở phiên bản ghim trong `.junctura-health-version` (kèm cả `pack/`) và kiểm gói Y tế thật bằng lệnh trên. Khi chạy cục bộ, hãy chuẩn bị `.junctura-health/` theo [docs/PORTAL.md](docs/PORTAL.md) trước khi chạy các lệnh frontend.
 
 ## Mở issue
 

@@ -55,6 +55,7 @@ jobs:
             /demo/plan.mjs
             /workflows/
             /seed/data/accounts.json
+            /pack/
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -76,6 +77,8 @@ jobs:
         run: |
           npm --prefix server ci --prefer-offline --no-audit --no-fund
           npm --prefix server test
+      - name: Check the pinned Junctura Health pack
+        run: node scripts/check-health-pack.mjs
       - name: Install the shared UI and frontend dependencies
         run: |
           npm --prefix .junctura-health/ui ci --prefer-offline --no-audit --no-fund
