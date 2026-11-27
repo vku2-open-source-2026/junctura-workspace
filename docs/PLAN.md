@@ -45,7 +45,7 @@ Khung repo gồm Compose, Dockerfile, LICENSE, LICENSES, NOTICE, REUSE, README, 
 Gói gồm `pack.json`, BPMN và `units.json`. Manifest mô tả nhãn, loại đơn vị, loại hồ sơ, nhóm gửi và nhận, hạn xử lý, biểu mẫu và lựa chọn quyết định của từng bước. `pack:install` tạo loại đơn vị, nhóm và đơn vị mẫu qua API DX-OS, nạp BPMN và ghi `ws_packs`.
 
 - Gói Giáo dục ở `examples/packs/education/` có hai trường, một phòng giáo dục và hai loại hồ sơ **chuyển trường** và **cấp bản sao học bạ**. Luồng chạy với DX-OS và Workspace.
-- Gói Y tế ở `junctura-health/pack/` có quy trình **chuyển tuyến** và **thanh toán**. Dùng cả hai gói để kiểm chứng cài, nâng phiên bản, gỡ và đổi gói bằng cấu hình.
+- Gói Y tế ở `junctura-health/pack/` có quy trình **chuyển tuyến** và **thanh toán**. Dùng cả hai gói để kiểm chứng cài, nâng phiên bản, gỡ và đổi gói bằng cấu hình. Workspace ghim bản Health mang gói trong `.junctura-health-version` (bản ghim hiện hành: Health PR #47, `53b0a404…`) và CI kiểm gói thật bằng `readPack` qua `scripts/check-health-pack.mjs`.
 
 | Dữ liệu Workspace | Lưu ở DX-OS |
 | --- | --- |

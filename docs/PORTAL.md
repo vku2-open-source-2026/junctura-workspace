@@ -37,7 +37,7 @@ Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junc
 
 ## Chạy dev
 
-Từ thư mục gốc Workspace, dùng Node 24 (phiên bản CI nằm trong `.node-version`) và lấy đúng phiên bản Junctura Health dùng để build giao diện và đọc dữ liệu mẫu.
+Từ thư mục gốc Workspace, dùng Node 24 (phiên bản CI nằm trong `.node-version`) và lấy đúng phiên bản Junctura Health dùng để build giao diện và đọc dữ liệu mẫu. Bản ghim hiện hành là commit `53b0a404…` của Junctura Health (Health PR #47, thêm gói Y tế và kiểm tương thích UI Workspace); các đường dẫn cổng dùng (`ui/`, `contracts/`, `workflows/`, `demo/plan.mjs`, `seed/data/accounts.json`) giống hệt nội dung ở bản ghim trước (`a24c8eb3…`), nên hành vi cổng không đổi. CI kiểm cả gói Y tế thật trong checkout ghim qua `scripts/check-health-pack.mjs`.
 
 ```sh
 git clone --filter=blob:none --no-checkout https://github.com/vku2-open-source-2026/junctura-health.git .junctura-health
