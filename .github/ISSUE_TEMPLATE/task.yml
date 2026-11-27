@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Junctura Contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Việc
+description: Công việc mới của Tầng 2, có phạm vi, phụ thuộc và điều kiện nghiệm thu (theo docs/PLAN.md).
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mô tả công việc để người đóng góp mới bắt đầu được. Nếu đây là lỗi khi chạy, dùng mẫu **Lỗi**. Lỗ hổng bảo mật không báo ở đây — xem `SECURITY.md` ở thư mục gốc.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Phạm vi
+      description: Việc cần làm gì, đụng đến tệp hoặc thư mục nào.
+      placeholder: "Bổ sung X tại server/..., phục vụ tính năng Y"
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Phụ thuộc
+      description: Issue/PR cần merge trước, hoặc nền tảng triển khai được (ví dụ `main` hiện tại).
+      placeholder: "#2 đã merge; triển khai từ main"
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Điều kiện nghiệm thu
+      description: Liệt kê các điều kiện kiểm được, dùng ô đánh dấu.
+      placeholder: "- [ ] Luồng A chạy được khi ...\n- [ ] CI xanh"
+    validations:
+      required: true

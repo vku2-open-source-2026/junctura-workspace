@@ -7,3 +7,4 @@
 
 - Import the Junctura Health portal and backend while preserving the portal's commit history.
 - Add CI for license metadata, Compose configuration, backend tests, and frontend type checking, tests and build.
+- Add contributing and security policies plus issue templates for tasks and bugs.
