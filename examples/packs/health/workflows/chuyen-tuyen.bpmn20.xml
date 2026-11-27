@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/health">
+  <process id="chuyen-tuyen" isExecutable="true">
+    <startEvent id="start" name="Phòng khám gửi bệnh nhân" />
+    <userTask id="tiep-nhan-benh-nhan" name="Tiếp nhận bệnh nhân" />
+    <userTask id="kham-va-chi-dinh" name="Khám và chỉ định" />
+    <userTask id="phan-hoi-ket-qua" name="Phản hồi kết quả về phòng khám" />
+    <endEvent id="end" name="Hoàn tất" />
+  </process>
+</definitions>

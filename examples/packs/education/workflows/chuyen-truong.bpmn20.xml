@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/education">
+  <process id="chuyen-truong" isExecutable="true">
+    <startEvent id="start" name="Trường gửi hồ sơ" />
+    <userTask id="tiep-nhan-ho-so" name="Tiếp nhận hồ sơ" />
+    <userTask id="xet-duyet" name="Xét duyệt chuyển trường" />
+    <userTask id="thong-bao-ket-qua" name="Thông báo kết quả về trường cũ" />
+    <endEvent id="end" name="Hoàn tất" />
+  </process>
+</definitions>

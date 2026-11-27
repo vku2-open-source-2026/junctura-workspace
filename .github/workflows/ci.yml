@@ -30,6 +30,10 @@ jobs:
           reuse lint
       - name: Validate Compose configuration
         run: docker compose config --quiet
+      - name: Validate the pack format schemas
+        run: |
+          python -m pip install -r requirements-contracts.txt
+          python scripts/check-pack-schemas.py
       - name: Read the pinned Junctura Health revision
         id: health
         run: |

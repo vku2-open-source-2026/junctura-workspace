@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "units": [
+    {
+      "id": "so-y-te-huyen-a",
+      "unitType": "so-y-te",
+      "name": "Sở Y tế Huyện A"
+    },
+    {
+      "id": "benh-vien-huyen-a",
+      "unitType": "benh-vien",
+      "name": "Bệnh viện Huyện A",
+      "parent": "so-y-te-huyen-a"
+    },
+    {
+      "id": "phong-kham-xa-b",
+      "unitType": "phong-kham",
+      "name": "Phòng khám Xã B",
+      "parent": "so-y-te-huyen-a"
+    }
+  ]
+}

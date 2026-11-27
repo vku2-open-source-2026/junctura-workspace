@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "units": [
+    {
+      "id": "phong-giao-duc-huyen-a",
+      "unitType": "phong-giao-duc",
+      "name": "Phòng Giáo dục Huyện A"
+    },
+    {
+      "id": "truong-tieu-hoc-a1",
+      "unitType": "truong",
+      "name": "Tiểu học A1",
+      "parent": "phong-giao-duc-huyen-a"
+    },
+    {
+      "id": "truong-thcs-a2",
+      "unitType": "truong",
+      "name": "THCS A2",
+      "parent": "phong-giao-duc-huyen-a"
+    }
+  ]
+}
