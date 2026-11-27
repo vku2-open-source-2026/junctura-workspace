@@ -1,0 +1,15 @@
+{
+  "operationId": "attachCaseFile",
+  "scenario": "invalid-input",
+  "description": "Tên tệp vượt 120 ký tự và phần name thiếu hẳn: trả 400 invalid_input trước khi upload bất kỳ byte nào lên DX-OS.",
+  "request": {
+    "headers": { "Idempotency-Key": "c2c3d4e5-4444-4555-8666-777788889999" },
+    "body": null
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "error": "invalid_input"
+    }
+  }
+}

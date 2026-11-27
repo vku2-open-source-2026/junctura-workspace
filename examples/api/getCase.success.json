@@ -1,0 +1,28 @@
+{
+  "operationId": "getCase",
+  "scenario": "success",
+  "description": "Y tá bệnh viện B xem chi tiết hồ sơ chuyển tuyến của đơn vị mình; trạng thái lấy từ execution là nguồn chuẩn.",
+  "request": {
+    "headers": {},
+    "body": null
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+      "executionId": "chuyen-tuyen:12:345",
+      "recordType": "chuyen-tuyen",
+      "status": "running",
+      "senderUnit": "phong-kham-a",
+      "receiverUnit": "benh-vien-b",
+      "subject": "Nguyễn Văn An",
+      "urgency": "Khẩn",
+      "dueAt": "2026-11-28T09:00:00Z",
+      "overdue": false,
+      "createdAt": "2026-11-27T09:00:00Z",
+      "updatedAt": "2026-11-27T09:00:00Z",
+      "input": { "ly-do-chuyen-tuyen": "Cần phẫu thuật chuyên sâu", "muc-uu-tien": "Khẩn" },
+      "openedBy": { "displayName": "Lê Văn A", "unit": "phong-kham-a" }
+    }
+  }
+}

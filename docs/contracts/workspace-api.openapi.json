@@ -1,0 +1,743 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Junctura Workspace API (Tier 3)",
+    "version": "0.1.0-draft",
+    "description": "Contract for the Workspace API that Tier 3 apps call to work cross-unit cases, tasks, files, notices and the directory. All eight operations are PLANNED: this document defines the contract before runtime; the runtime is tracked in the Workspace feature issues per docs/PLAN.md and the Layer 1 release conditions in vku2-open-source-2026/junctura-dxos#50.\n\nIdentity: every request carries the signed-in user's Junctura access token. The Workspace backend verifies it (RS256 via JWKS), exchanges it through POST /v1/token-exchange for a short-lived delegated Core bearer and calls DX-OS on the user's behalf, so group and unit authorization keep being checked in the core. Tenant or app IDs in headers or bodies never supply authority.\n\nData sources: cases mirror on the ws_cases collection while the workflow execution stays authoritative for status; notes, files and notices are app-owned records and objects in DX-OS; directory entries are read from the DX-OS directory. See docs/API.md for the weighting rules, pagination, error codes, idempotency semantics and the records/outbox payload.\n\nUpstream evidence: composed from the pinned DX-OS checkout excerpt .junctura/dxos-reference (revision 3e0ce519530057f47112f1a6b4f544202deb8bd9, file docs/contracts/foundation-api.openapi.json, SDK @junctura/server-client 0.3.0-rc.1). Each operation lists the exact upstream calls under x-workspace-upstream.\n\nAuthority notes: the pinned DX-OS directory list operations require an enrolled tenant directory administrator, so GET /api/directory serves only callers whose own delegated authority carries it; the Workspace preserves the user's scope with no admin fallback (it never substitutes the app identity to widen access). The user token azp is checked against the Tier 3 onboarding allowlist of eligible browser and app clients; the portal's current azp value is not re-used for Tier 3. Every 503 junctura_unavailable after an upstream-dependent call may leave the outcome unknown when DX-OS has possibly already accepted a mutation; the documented recovery is an exact same-key retry. Pinned taskDueAt is absolute per step activation and does not establish per-activation relative step deadlines without a verified runtime mapping."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:5190",
+      "description": "Workspace backend, same origin as the portal behind the reverse proxy."
+    }
+  ],
+  "security": [
+    {
+      "userBearer": []
+    }
+  ],
+  "tags": [
+    { "name": "cases", "description": "Cross-unit cases: create, list, inspect." },
+    { "name": "tasks", "description": "Pending step tasks of the caller's groups: list, complete with records." },
+    { "name": "files", "description": "Case attachments backed by DX-OS object storage." },
+    { "name": "notices", "description": "Coordination notices read from ws_notices." },
+    { "name": "directory", "description": "Units, unit types, groups and members from the DX-OS directory." }
+  ],
+  "paths": {
+    "/api/cases": {
+      "post": {
+        "operationId": "createCase",
+        "summary": "Open a cross-unit case",
+        "description": "Opens the pack workflow for the record type with the caller's unit as sender. The caller must belong to a sender group of the record type. The Workspace resolves the pack record type to a deployed BPMN definition, starts the execution with deadlines and creates the ws_cases mirror record in the same call. The pinned upstream taskDueAt is absolute per step activation; the Workspace maps the pack's deadlineDays to the execution dueAt at opening and does not establish per-activation relative step deadlines without a verified runtime mapping (see docs/API.md). An identical retry with the same Idempotency-Key replays the first 201 response.",
+        "tags": ["cases"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "POST /v1/workflows/executions (startWorkflowWithDeadlines)",
+          "POST /v2/data/ws_cases (createVersionedRecord)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKeyRequired" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CaseCreate" },
+              "example": {
+                "recordType": "chuyen-tuyen",
+                "receiverUnit": "benh-vien-b",
+                "subject": "Nguyễn Văn An",
+                "urgency": "Khẩn",
+                "input": { "ly-do-chuyen-tuyen": "Cần phẫu thuật chuyên sâu", "muc-uu-tien": "Khẩn" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Case opened.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CaseDetail" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
+          "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      },
+      "get": {
+        "operationId": "listCases",
+        "summary": "List cases",
+        "description": "Lists the cases the caller may read, newest first from the ws_cases mirror. The workflow execution stays authoritative for status; the mirror is the listing source because DX-OS has no execution list operation (see docs/API.md gaps). Cursor pagination: pass nextCursor unchanged with the same filters.",
+        "tags": ["cases"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "GET /v2/data/ws_cases (listFilteredRecords, sort createdAt.desc)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "$ref": "#/components/parameters/CaseStatusFilter" },
+          { "$ref": "#/components/parameters/RecordTypeFilter" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of cases; nextCursor is null on the last page.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CaseListPage" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/cases/{caseId}": {
+      "get": {
+        "operationId": "getCase",
+        "summary": "Inspect one case",
+        "description": "Merges the ws_cases mirror with the authoritative execution state (status, dueAt). Read access requires membership in the sender or receiver unit of the case; other units get 403 without leaking existence.",
+        "tags": ["cases"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "GET /v2/data/ws_cases/{id} (getVersionedRecord)",
+          "GET /v1/workflows/executions/{executionId} (getWorkflowWithDeadline)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/CaseIdPath" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The case with authoritative execution state.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CaseDetail" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/cases/{caseId}/files": {
+      "post": {
+        "operationId": "attachCaseFile",
+        "summary": "Attach a file to a case",
+        "description": "Uploads attachment bytes (1 byte to 5 MiB, malware-scanned) to DX-OS object storage linked to the case record, then records the metadata (original name, media type, uploader) as a ws_case_files record. The object upload and the metadata record are two upstream writes; a failure between them leaves at most an unlisted object that quota reconciliation accounts for. Supply Idempotency-Key to make the metadata record create replay-safe.",
+        "tags": ["files"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "POST /v2/objects (uploadObjectWithMetadata, recordRef = case record)",
+          "POST /v2/data/ws_case_files (createVersionedRecord)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/CaseIdPath" },
+          { "$ref": "#/components/parameters/IdempotencyKeyOptional" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary", "description": "1 byte to 5 MiB; published only after a clean malware scan." },
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120, "description": "Original file name; control characters are rejected." }
+                },
+                "required": ["file", "name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Attachment recorded.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FileMetadata" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/FileTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMedia" },
+          "422": { "$ref": "#/components/responses/MalwareDetected" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List the caller's pending step tasks",
+        "description": "Lists the pending workflow tasks of the caller's verified groups and units, deadline ascending with undated tasks last. Access cannot be widened by filters. Each task carries the case it belongs to.",
+        "tags": ["tasks"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "GET /v1/workflows/tasks (listWorkflowTasks)",
+          "GET /v2/data/ws_cases (listFilteredRecords, case join)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "$ref": "#/components/parameters/PageCursor" },
+          { "$ref": "#/components/parameters/OverdueFilter" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of pending tasks; nextCursor is null on the last page.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskListPage" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/tasks/{taskId}/complete": {
+      "post": {
+        "operationId": "completeTask",
+        "summary": "Complete a step task with a decision",
+        "description": "Completes the caller's step with one pack decision plus the reason when the decision requires one, optional form values, and optional records: up to 10 creates in the allowlisted Workspace collections that DX-OS validates and commits atomically with the step transition through its durable completion outbox. The response 202 means the transition is still pending; read the case and its history afterwards. A 503 after DX-OS may have accepted the completion leaves the outcome unknown; retry with the exact same Idempotency-Key and body. An identical retry with the original Idempotency-Key returns the first recorded result even if the task has since completed.",
+        "tags": ["tasks"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "POST /v1/workflows/executions/{executionId}/complete (completeWorkflowTask: decision/reason as output, form as variables, records forwarded; durable completion outbox)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/TaskIdPath" },
+          { "$ref": "#/components/parameters/IdempotencyKeyRequired" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCompletion" },
+              "example": {
+                "decision": "tiep-nhan",
+                "form": { "ma-chuyen-tuyen": "CT-2026-0001" },
+                "records": [
+                  { "collection": "ws_case_notes", "data": { "caseId": "9f1d2c3a-1111-4222-8333-444455556666", "text": "Đã tiếp nhận bệnh nhân" } }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Completion accepted; the step transition is pending in the outbox.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PendingCompletion" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/TaskForbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/TaskConflict" },
+          "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/notices": {
+      "get": {
+        "operationId": "listNotices",
+        "summary": "Read coordination notices",
+        "description": "Lists notices the caller may read, newest first, from the ws_notices collection. Pinned notices are flagged; recipient filtering relies on indexed fields registered in the collection schema.",
+        "tags": ["notices"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "GET /v2/data/ws_notices (listFilteredRecords, sort createdAt.desc)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "$ref": "#/components/parameters/PageCursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of notices; nextCursor is null on the last page.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NoticeListPage" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    },
+    "/api/directory": {
+      "get": {
+        "operationId": "listDirectory",
+        "summary": "Read the shared directory",
+        "description": "Lists one directory resource per call: unit types, units, a unit's groups or a unit's members. The pinned DX-OS directory list operations require an enrolled tenant directory administrator; the delegated bearer therefore must carry the caller's own directory-admin authority. Ordinary staff tokens get 403 forbidden and the Workspace preserves the user's scope with no admin fallback — it never substitutes the app identity to widen access. The optional q filter narrows by name substring and is applied by the Workspace because the DX-OS directory lists expose no name search (see docs/API.md gaps). type=groups and type=members require the unit parameter.",
+        "tags": ["directory"],
+        "security": [{ "userBearer": [] }],
+        "x-workspace-status": "planned",
+        "x-workspace-upstream": [
+          "verify user token via JWKS",
+          "POST /v1/token-exchange (exchangeUserToken)",
+          "GET /v1/directory/unit-types (listDirectoryUnitType)",
+          "GET /v1/directory/units (listDirectoryUnit)",
+          "GET /v1/directory/units/{unit}/groups (listDirectoryGroup)",
+          "GET /v1/directory/units/{unit}/members (listDirectoryMember)"
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/DirectoryType" },
+          { "$ref": "#/components/parameters/DirectoryQuery" },
+          { "$ref": "#/components/parameters/DirectoryUnit" },
+          { "$ref": "#/components/parameters/PageLimit" },
+          { "$ref": "#/components/parameters/PageCursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of directory entries; nextCursor is null on the last page.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DirectoryListPage" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "503": { "$ref": "#/components/responses/UpstreamUnavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "userBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The signed-in user's Junctura access token. The Workspace verifies it and forwards the user's authority to DX-OS through token exchange; app credentials never appear in requests. azp must name a client on the Tier 3 onboarding allowlist; the portal's current azp value is not re-used for Tier 3."
+      }
+    },
+    "schemas": {
+      "Uuid": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "DateTime": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "UnitId": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{1,63}$"
+      },
+      "RecordTypeId": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,62}$"
+      },
+      "TaskId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9:_-]{1,128}$"
+      },
+      "ExecutionId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9:_-]{1,128}$"
+      },
+      "Actor": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "unit": { "$ref": "#/components/schemas/UnitId" }
+        },
+        "required": ["displayName", "unit"],
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "requestId": { "$ref": "#/components/schemas/Uuid" }
+        },
+        "required": ["error"],
+        "additionalProperties": false,
+        "description": "Workspace error codes: invalid_input (400), unauthorized (401), forbidden (403), not_found (404), task_group_required (403), idempotency_key_reused (422), malware_detected (422), too_large (413), unsupported_type (415), junctura_unavailable (503). DX-OS denial codes may surface as forbidden with a requestId; see docs/API.md."
+      },
+      "TaskConflictError": {
+        "type": "object",
+        "properties": {
+          "error": { "enum": ["task_claimed", "task_already_completed"] },
+          "requestId": { "$ref": "#/components/schemas/Uuid" },
+          "claimedBy": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "claimedUntil": { "$ref": "#/components/schemas/DateTime" }
+        },
+        "required": ["error"],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": { "properties": { "error": { "const": "task_claimed" } } },
+            "then": { "required": ["claimedBy", "claimedUntil"] }
+          }
+        ]
+      },
+      "CaseCreate": {
+        "type": "object",
+        "properties": {
+          "recordType": { "$ref": "#/components/schemas/RecordTypeId" },
+          "receiverUnit": { "$ref": "#/components/schemas/UnitId" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Display description of the person the case is about; never an identity-provider subject." },
+          "urgency": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "input": { "type": "object", "description": "Values of the record type's open form." }
+        },
+        "required": ["recordType", "subject", "input"],
+        "additionalProperties": false
+      },
+      "CaseStatus": {
+        "enum": ["running", "completed", "cancelled"]
+      },
+      "CaseSummary": {
+        "type": "object",
+        "properties": {
+          "caseId": { "$ref": "#/components/schemas/Uuid" },
+          "executionId": { "$ref": "#/components/schemas/ExecutionId" },
+          "recordType": { "$ref": "#/components/schemas/RecordTypeId" },
+          "status": { "$ref": "#/components/schemas/CaseStatus" },
+          "senderUnit": { "$ref": "#/components/schemas/UnitId" },
+          "receiverUnit": { "$ref": "#/components/schemas/UnitId" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "urgency": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "dueAt": { "anyOf": [{ "$ref": "#/components/schemas/DateTime" }, { "type": "null" }] },
+          "overdue": { "type": "boolean" },
+          "createdAt": { "$ref": "#/components/schemas/DateTime" },
+          "updatedAt": { "$ref": "#/components/schemas/DateTime" }
+        },
+        "required": ["caseId", "executionId", "recordType", "status", "senderUnit", "receiverUnit", "subject", "dueAt", "overdue", "createdAt", "updatedAt"],
+        "additionalProperties": false
+      },
+      "CaseDetail": {
+        "type": "object",
+        "properties": {
+          "caseId": { "$ref": "#/components/schemas/Uuid" },
+          "executionId": { "$ref": "#/components/schemas/ExecutionId" },
+          "recordType": { "$ref": "#/components/schemas/RecordTypeId" },
+          "status": { "$ref": "#/components/schemas/CaseStatus" },
+          "senderUnit": { "$ref": "#/components/schemas/UnitId" },
+          "receiverUnit": { "$ref": "#/components/schemas/UnitId" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "urgency": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "dueAt": { "anyOf": [{ "$ref": "#/components/schemas/DateTime" }, { "type": "null" }] },
+          "overdue": { "type": "boolean" },
+          "createdAt": { "$ref": "#/components/schemas/DateTime" },
+          "updatedAt": { "$ref": "#/components/schemas/DateTime" },
+          "input": { "type": "object", "description": "Submitted open-form values." },
+          "openedBy": { "$ref": "#/components/schemas/Actor" }
+        },
+        "required": ["caseId", "executionId", "recordType", "status", "senderUnit", "receiverUnit", "subject", "dueAt", "overdue", "createdAt", "updatedAt", "input", "openedBy"],
+        "additionalProperties": false
+      },
+      "CaseListPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/CaseSummary" }, "maxItems": 100 },
+          "nextCursor": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$" }, { "type": "null" }] }
+        },
+        "required": ["items", "nextCursor"],
+        "additionalProperties": false
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "taskId": { "$ref": "#/components/schemas/TaskId" },
+          "caseId": { "$ref": "#/components/schemas/Uuid" },
+          "executionId": { "$ref": "#/components/schemas/ExecutionId" },
+          "stepKey": { "$ref": "#/components/schemas/TaskId" },
+          "name": { "type": "string", "maxLength": 120 },
+          "unit": { "$ref": "#/components/schemas/UnitId" },
+          "candidateGroups": { "type": "array", "items": { "$ref": "#/components/schemas/UnitId" }, "minItems": 1, "uniqueItems": true },
+          "dueAt": { "anyOf": [{ "$ref": "#/components/schemas/DateTime" }, { "type": "null" }] },
+          "overdue": { "type": "boolean" },
+          "claimedBy": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 120 }, { "type": "null" }] },
+          "claimedUntil": { "anyOf": [{ "$ref": "#/components/schemas/DateTime" }, { "type": "null" }] }
+        },
+        "required": ["taskId", "caseId", "executionId", "stepKey", "name", "unit", "candidateGroups", "dueAt", "overdue", "claimedBy", "claimedUntil"],
+        "additionalProperties": false
+      },
+      "TaskListPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Task" }, "maxItems": 100 },
+          "nextCursor": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$" }, { "type": "null" }] }
+        },
+        "required": ["items", "nextCursor"],
+        "additionalProperties": false
+      },
+      "RecordCreate": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "enum": ["ws_cases", "ws_case_notes", "ws_case_files", "ws_notices"],
+            "description": "Explicit allowlist of the Workspace collections records may create in (docs/API.md); any other collection such as registry_records is rejected as invalid_input before forwarding."
+          },
+          "data": { "type": "object" }
+        },
+        "required": ["collection", "data"],
+        "additionalProperties": false,
+        "description": "Mirrors the upstream RecordCreateInput: 1 to 10 creates per completion, validated and committed by DX-OS with the step transition through the durable completion outbox. At runtime the Workspace checks the caller's scope over the owning case and unit for every collection and rejects caller-supplied identity fields — ownership, attribution and timestamps are derived from the verified token, never from the request; legitimate records are still forwarded unchanged."
+      },
+      "TaskCompletion": {
+        "type": "object",
+        "properties": {
+          "decision": { "type": "string", "minLength": 1, "maxLength": 120, "description": "A decisions[].id of the task's pack step; the reason must be supplied when that decision sets requiresReason." },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "form": { "type": "object", "description": "Values of the step's form fields." },
+          "records": { "type": "array", "items": { "$ref": "#/components/schemas/RecordCreate" }, "minItems": 1, "maxItems": 10 }
+        },
+        "required": ["decision"],
+        "additionalProperties": false
+      },
+      "PendingCompletion": {
+        "type": "object",
+        "properties": {
+          "taskId": { "$ref": "#/components/schemas/TaskId" },
+          "caseId": { "$ref": "#/components/schemas/Uuid" },
+          "completionStatus": { "const": "pending" }
+        },
+        "required": ["taskId", "caseId", "completionStatus"],
+        "additionalProperties": false
+      },
+      "FileMetadata": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Uuid" },
+          "caseId": { "$ref": "#/components/schemas/Uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+          "mediaType": { "type": "string", "minLength": 1, "maxLength": 127 },
+          "size": { "type": "integer", "minimum": 1, "maximum": 5242880 },
+          "uploadedBy": { "$ref": "#/components/schemas/Actor" },
+          "uploadedAt": { "$ref": "#/components/schemas/DateTime" }
+        },
+        "required": ["id", "caseId", "name", "mediaType", "size", "uploadedBy", "uploadedAt"],
+        "additionalProperties": false
+      },
+      "Notice": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Uuid" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "body": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "author": { "$ref": "#/components/schemas/Actor" },
+          "pinned": { "type": "boolean" },
+          "createdAt": { "$ref": "#/components/schemas/DateTime" }
+        },
+        "required": ["id", "title", "body", "author", "pinned", "createdAt"],
+        "additionalProperties": false
+      },
+      "NoticeListPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Notice" }, "maxItems": 100 },
+          "nextCursor": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$" }, { "type": "null" }] }
+        },
+        "required": ["items", "nextCursor"],
+        "additionalProperties": false
+      },
+      "UnitTypeEntry": {
+        "type": "object",
+        "properties": {
+          "kind": { "const": "unit-type" },
+          "unitType": { "$ref": "#/components/schemas/UnitId" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+        },
+        "required": ["kind", "unitType", "name"],
+        "additionalProperties": false
+      },
+      "UnitEntry": {
+        "type": "object",
+        "properties": {
+          "kind": { "const": "unit" },
+          "unit": { "$ref": "#/components/schemas/UnitId" },
+          "unitType": { "$ref": "#/components/schemas/UnitId" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+        },
+        "required": ["kind", "unit", "unitType", "name"],
+        "additionalProperties": false
+      },
+      "GroupEntry": {
+        "type": "object",
+        "properties": {
+          "kind": { "const": "group" },
+          "unit": { "$ref": "#/components/schemas/UnitId" },
+          "group": { "$ref": "#/components/schemas/UnitId" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+        },
+        "required": ["kind", "unit", "group", "name"],
+        "additionalProperties": false
+      },
+      "MemberEntry": {
+        "type": "object",
+        "properties": {
+          "kind": { "const": "member" },
+          "unit": { "$ref": "#/components/schemas/UnitId" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "groups": { "type": "array", "items": { "$ref": "#/components/schemas/UnitId" }, "uniqueItems": true }
+        },
+        "required": ["kind", "unit", "subject", "groups"],
+        "additionalProperties": false
+      },
+      "DirectoryEntry": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/UnitTypeEntry" },
+          { "$ref": "#/components/schemas/UnitEntry" },
+          { "$ref": "#/components/schemas/GroupEntry" },
+          { "$ref": "#/components/schemas/MemberEntry" }
+        ]
+      },
+      "DirectoryListPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/DirectoryEntry" }, "maxItems": 100 },
+          "nextCursor": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$" }, { "type": "null" }] }
+        },
+        "required": ["items", "nextCursor"],
+        "additionalProperties": false
+      }
+    },
+    "parameters": {
+      "IdempotencyKeyRequired": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/Uuid" },
+        "description": "Lowercase UUID. Reuse it unchanged with the same body to replay the first recorded response; reuse with a different body returns 422 idempotency_key_reused."
+      },
+      "IdempotencyKeyOptional": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "schema": { "$ref": "#/components/schemas/Uuid" },
+        "description": "Optional replay-safe key for the metadata record create."
+      },
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
+      },
+      "PageCursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[A-Za-z0-9_-]+$" },
+        "description": "Opaque nextCursor from the previous page; reuse it with the same filters."
+      },
+      "CaseStatusFilter": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": { "$ref": "#/components/schemas/CaseStatus" }
+      },
+      "RecordTypeFilter": {
+        "name": "recordType",
+        "in": "query",
+        "required": false,
+        "schema": { "$ref": "#/components/schemas/RecordTypeId" }
+      },
+      "OverdueFilter": {
+        "name": "overdue",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "boolean" }
+      },
+      "DirectoryType": {
+        "name": "type",
+        "in": "query",
+        "required": false,
+        "schema": { "enum": ["unit-types", "units", "groups", "members"], "default": "units" }
+      },
+      "DirectoryQuery": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": "Name substring filter, applied by the Workspace over the paged directory lists."
+      },
+      "DirectoryUnit": {
+        "name": "unit",
+        "in": "query",
+        "required": false,
+        "schema": { "$ref": "#/components/schemas/UnitId" },
+        "description": "Required when type is groups or members."
+      },
+      "CaseIdPath": {
+        "name": "caseId",
+        "in": "path",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/Uuid" }
+      },
+      "TaskIdPath": {
+        "name": "taskId",
+        "in": "path",
+        "required": true,
+        "schema": { "$ref": "#/components/schemas/TaskId" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid path, query, JSON, schema or request framing.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Unauthorized": {
+        "description": "Missing, expired or invalid user token.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "The caller's verified identity lacks the unit or group authority for the operation.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "The resource does not exist or is hidden from the caller.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "IdempotencyConflict": {
+        "description": "The Idempotency-Key is bound to a different logical request in the same scope.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "IdempotencyKeyReused": {
+        "description": "An unexpired Idempotency-Key is bound to a different logical request.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "TaskForbidden": {
+        "description": "The caller is outside all candidate groups for this task, or lacks the required permission.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "TaskConflict": {
+        "description": "The task is claimed by another caller or is already complete.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskConflictError" } } }
+      },
+      "FileTooLarge": {
+        "description": "The attachment exceeds 5 MiB.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnsupportedMedia": {
+        "description": "The request or attachment media type is not supported.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "MalwareDetected": {
+        "description": "The attachment did not pass the malware scan and was never published.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UpstreamUnavailable": {
+        "description": "DX-OS is unreachable or failed before a verdict. Reads and lists return no data and write nothing. For a mutation the outcome is unknown when DX-OS may already have accepted it (for example a timeout after an accepted mutation), so the Workspace must not claim that nothing was written: retry with the exact same Idempotency-Key and an identical body to resolve the outcome.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "operationId": "getCase",
+  "scenario": "forbidden",
+  "description": "Nhân viên đơn vị ngoài hai bên gửi–nhận (so-y-te) mở hồ sơ: bị từ chối 403 forbidden mà không tiết lộ hồ sơ tồn hay không ở đơn vị khác.",
+  "request": {
+    "headers": {},
+    "body": null
+  },
+  "response": {
+    "status": 403,
+    "body": {
+      "error": "forbidden",
+      "requestId": "3f2e3d4c-5555-4666-8777-888899990000"
+    }
+  }
+}

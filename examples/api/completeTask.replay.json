@@ -1,0 +1,23 @@
+{
+  "operationId": "completeTask",
+  "scenario": "replay",
+  "description": "Gửi lại đúng yêu cầu hoàn tất với cùng Idempotency-Key K-DONE và cùng thân yêu cầu: nhận lại đúng phản hồi 202 đầu tiên kể cả khi bước đã hoàn thành, không hoàn tất hai lần.",
+  "request": {
+    "headers": { "Idempotency-Key": "a1b2c3d4-3333-4444-8555-666677778888" },
+    "body": {
+      "decision": "tiep-nhan",
+      "form": { "ma-chuyen-tuyen": "CT-2026-0001" },
+      "records": [
+        { "collection": "ws_case_notes", "data": { "caseId": "9f1d2c3a-1111-4222-8333-444455556666", "text": "Đã tiếp nhận bệnh nhân" } }
+      ]
+    }
+  },
+  "response": {
+    "status": 202,
+    "body": {
+      "taskId": "task-12-tiep-nhan-benh-nhan",
+      "caseId": "9f1d2c3a-1111-4222-8333-444455556666",
+      "completionStatus": "pending"
+    }
+  }
+}
