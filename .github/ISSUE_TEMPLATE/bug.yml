@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Junctura Contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Lỗi
+description: Báo lỗi khi chạy cổng hoặc backend. Không dùng để mô tả lỗ hổng bảo mật — xem SECURITY.md.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Nếu đây là lỗ hổng bảo mật, đừng mô tả chi tiết kỹ thuật ở đây. Mở tab Security của repo (<https://github.com/vku2-open-source-2026/junctura-workspace/security>) và làm theo chính sách trong `SECURITY.md`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Chuyện gì xảy ra?
+      description: Mô tả lỗi và ảnh hưởng tới người dùng.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện
+      description: Lệnh đã chạy, trang đã mở, thứ tự thao tác.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Kết quả mong đợi
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Môi trường
+      description: Trình duyệt và hệ điều hành (giao diện) hoặc Node (backend), cùng commit `main` đang chạy.
+      placeholder: "Firefox 141 / Ubuntu 24.04; commit abc1234 trên main"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Nhật ký
+      description: Dán nhật ký hoặc ảnh chụp. Xóa thông tin cá nhân, token và thông tin nhạy cảm trước khi gửi.
+      render: shell
