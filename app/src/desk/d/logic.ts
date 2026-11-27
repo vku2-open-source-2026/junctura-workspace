@@ -178,7 +178,7 @@ export const eventFamilyCounts = (items: readonly AuditEventItem[]): readonly { 
     .sort((a, b) => b.count - a.count || a.family.localeCompare(b.family));
 };
 
-/** The emergency-access events the health department must review. */
+/** The emergency-access events the coordinating unit must review. */
 export const emergencyEvents = (items: readonly AuditEventItem[]): readonly AuditEventItem[] =>
   items.filter(item => item.event === "execution.emergency_access");
 

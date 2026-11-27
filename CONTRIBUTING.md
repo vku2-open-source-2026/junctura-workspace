@@ -20,6 +20,9 @@ Các lệnh dưới đây khớp với workflow `Checks` trong `.github/workflow
 | --- | --- |
 | `python -m pip install -r requirements-reuse.txt && reuse lint` | Kiểm tra metadata bản quyền REUSE/SPDX |
 | `docker compose config --quiet` | Kiểm tra cấu hình Compose |
+| `npm run test:guards` | Chạy kiểm thử fixture của các CI guard (Node ghim, không cần cài phụ thuộc) |
+| `npm run check:neutral` | CI guard `check:neutral`: mã chạy của cổng không mang từ vựng/dữ liệu/import ngành cứng và không import nguồn Health, demo/seed cũ; ngoại lệ được ghi lý do trong `scripts/sector-neutral-allowlist.json` (mục không còn dùng sẽ bị báo lỗi) |
+| `npm run check:storage` | CI guard `check:storage`: mã chạy không lưu dữ liệu nghiệp vụ vào SQLite, không ghi tệp host tuỳ ý, không đọc seed ở production và không đọc `.env` của kho khác; ngoại lệ nằm trong `scripts/storage-allowlist.json` |
 | `npm --prefix server ci` | Cài phụ thuộc backend |
 | `npm --prefix server test` | Chạy kiểm thử backend |
 | `node scripts/check-health-pack.mjs` | Kiểm gói Y tế thật trong checkout Junctura Health ghim (cần `.junctura-health/`) |
@@ -30,6 +33,8 @@ Các lệnh dưới đây khớp với workflow `Checks` trong `.github/workflow
 | `npm --prefix app run build` | Build frontend |
 
 Trên GitHub, CI checkout Junctura Health ở phiên bản ghim trong `.junctura-health-version` (chỉ `pack/`) và kiểm gói Y tế thật bằng lệnh trên; frontend và backend không dùng checkout này. Khi chạy cục bộ, các lệnh frontend chạy được không cần `.junctura-health/`.
+
+Thứ tự của workflow `Checks` là chủ đích và giữ nguyên trên runner sạch: các bước ổn định, không cần cài đặt trước tiên (REUSE, Compose, schema, hợp đồng API và hai CI guard), sau đó cài phụ thuộc backend ghim (`npm --prefix server ci`) — cần cho `scripts/check-health-pack.mjs` vì nó import `server/packs.mjs` (ajv/saxes từ `server/node_modules`) — rồi kiểm gói Y tế ghim, kiểm thử backend, và typecheck, kiểm thử, build frontend nằm cuối; không cài phụ thuộc nào hai lần. Hai guard quét mã chạy trong phạm vi `app/src/`, `packages/ui/src/`, các mô-đun JS/TS của `server/` ở mọi cấp lồng nhau (trừ kiểm thử), `app/index.html`, `app/public/config.example.json` và các điểm vào cấu hình build đã xuất bản (`vite.config.ts`, tsconfig); pack fixture, kiểm thử và công cụ vận hành nằm ngoài phạm vi; khi cần một ngoại lệ thật, thêm mục có lý do vào allowlist thay vì nới lỏng guard (mục `file-write` phải nêu đúng dòng vi phạm).
 
 ## Mở issue
 
@@ -44,7 +49,7 @@ Repo chỉ nhận issue theo hai mẫu trên, trừ một ngoại lệ: issue tr
 
 1. Làm việc trên nhánh riêng, một nhánh cho một issue; push lên fork hoặc nhánh cùng repo.
 2. Thông điệp commit ngắn gọn, có tiền tố phạm vi như trong lịch sử hiện có (`docs:`, `fix(portal):`, `ci:`).
-3. Mở PR vào `main`, dẫn về issue liên quan. CI chạy workflow `Checks`: `reuse lint`, cấu hình Compose, kiểm thử backend, typecheck, kiểm thử và build frontend.
+3. Mở PR vào `main`, dẫn về issue liên quan. CI chạy workflow `Checks`: `reuse lint`, cấu hình Compose, các CI guard (`check:neutral`, `check:storage`), kiểm gói Y tế ghim, kiểm thử backend, typecheck, kiểm thử và build frontend.
 4. PR có thể merge khi CI xanh và đã có lượt duyệt; lịch sử hiện tại merge bằng merge commit.
 
 ## Thêm SPDX cho tệp mới

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-/** Strings of space D (Điều hành), in plain Vietnamese for the health department and facility staff. */
+/** Strings of space D (Điều hành), in plain Vietnamese for the coordinating unit and facility staff. */
 export const dataStrings = {
   overview: {
     title: "Tổng quan điều hành",
@@ -160,13 +160,5 @@ export const appStateLabel = (state: string): string => {
   return labels[state] ?? state;
 };
 
-/** Friendly labels for the purpose codes used in audit reason codes and contracts. */
-export const purposeName = (purpose: string): string => {
-  const labels: Readonly<Record<string, string>> = {
-    treatment: "Điều trị",
-    dispensing: "Phát thuốc",
-    referral_intake: "Tiếp nhận chuyển tuyến",
-    claim_review: "Giám định bảo hiểm",
-  };
-  return labels[purpose] ?? purpose;
-};
+/** Audit purpose codes arrive at runtime and are shown as-is: their friendly names are sector data of the pack and the calling apps, never portal constants. */
+export const purposeName = (purpose: string): string => purpose;

@@ -1,0 +1,9 @@
+[
+  { "path": "app/src/config.ts", "term": "health", "reason": "Local-development default registers the demo stack's web client id `health-portal-web`; deployments override it via /config.json." },
+  { "path": "app/public/config.example.json", "term": "health", "reason": "Deployment template ships the same registered demo client id `health-portal-web` as its example value." },
+  { "path": "server/main.mjs", "term": "health", "reason": "Compatibility defaults: the demo web client id `health-portal-web` and the sample pack directory `examples/packs/health`; production picks the pack with JUNCTURA_PACK_DIR." },
+  { "path": "server/store.mjs", "term": "health", "reason": "The backend stores notices, notes and attachment metadata on Layer 1 as the registered application `health-portal-backend`." },
+  { "path": "server/staff.mjs", "term": "so-y-te", "reason": "Board publication right exactly as issue #9 defined it: the board unit of the demo tenant; broader board policy is separate work." },
+  { "path": "server/staff.mjs", "term": "ban-tin", "reason": "Board publication right exactly as issue #9 defined it: the verified `ban-tin` group of the selected board unit; broader board policy is separate work." },
+  { "path": "app/src/desk/d/strings.ts", "term": "cấp cứu", "reason": "Label of the platform's break-glass access-review feature (`execution.emergency_access`), an operations concept of space D, not sector data." }
+]

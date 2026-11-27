@@ -1,0 +1,15 @@
+{
+  "name": "junctura-workspace",
+  "private": true,
+  "description": "Repo-level CI guards of the Junctura Workspace portal (no dependencies, no build): the sector-neutral and storage boundary checks with their fixture tests.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "check:neutral": "node scripts/check-sector-neutral.mjs",
+    "check:storage": "node scripts/check-storage.mjs",
+    "test:guards": "node --test \"scripts/tests/**/*.test.mjs\""
+  }
+}

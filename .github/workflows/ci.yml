@@ -36,6 +36,22 @@ jobs:
           python scripts/check-pack-schemas.py
       - name: Validate the Tier 3 API contract
         run: python scripts/check-api-contract.py
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            packages/ui/package-lock.json
+            server/package-lock.json
+            app/package-lock.json
+      # The CI guards of issue #14 run before any npm application install: they
+      # scan the runtime sources with the pinned Node and no dependencies.
+      - name: Run the CI guard fixture tests
+        run: npm run test:guards
+      - name: Check sector-neutral runtime code
+        run: npm run check:neutral
+      - name: Check runtime storage boundaries
+        run: npm run check:storage
       - name: Read the pinned Junctura Health revision
         id: health
         run: |
@@ -55,14 +71,18 @@ jobs:
           sparse-checkout: |
             /pack/
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: |
-            packages/ui/package-lock.json
-            server/package-lock.json
-            app/package-lock.json
+      # The dependency order is deliberate and holds on a clean runner:
+      # scripts/check-health-pack.mjs imports server/packs.mjs, which needs the
+      # server's locked dependencies (ajv, saxes) from server/node_modules. The
+      # locked backend install therefore precedes the pinned Health checker,
+      # which precedes the backend tests; the backend is installed exactly
+      # once, and the frontend workload stays last.
+      - name: Install the backend dependencies
+        run: npm --prefix server ci --prefer-offline --no-audit --no-fund
+      - name: Check the pinned Junctura Health pack
+        run: node scripts/check-health-pack.mjs
+      - name: Test the backend
+        run: npm --prefix server test
       - name: Typecheck, test, build and pack @junctura/ui
         run: |
           npm --prefix packages/ui ci --prefer-offline --no-audit --no-fund
@@ -70,12 +90,6 @@ jobs:
           npm --prefix packages/ui test
           npm --prefix packages/ui run build
           npm pack ./packages/ui --pack-destination "$RUNNER_TEMP"
-      - name: Install and test the backend
-        run: |
-          npm --prefix server ci --prefer-offline --no-audit --no-fund
-          npm --prefix server test
-      - name: Check the pinned Junctura Health pack
-        run: node scripts/check-health-pack.mjs
       - name: Install the frontend dependencies
         run: npm --prefix app ci --prefer-offline --no-audit --no-fund
       - name: Typecheck, test and build the frontend
