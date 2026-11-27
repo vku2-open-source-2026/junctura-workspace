@@ -8,7 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: junctura-health-portal
+    image: junctura-workspace-portal
     init: true
     ports:
       # Loopback by default: put a TLS reverse proxy in front (see docs/PORTAL.md).
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
-    image: junctura-health-portal-api
+    image: junctura-workspace-portal-api
     init: true
     environment:
       # The API is only reachable inside the compose network (no published ports).

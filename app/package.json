@@ -1,8 +1,8 @@
 {
-  "name": "junctura-health-portal",
+  "name": "junctura-workspace-portal",
   "version": "0.1.0",
   "private": true,
-  "description": "Cổng Junctura Health, the GUI of Layer 2: public pages of the shared health space and the signed-in workspace (H work, P cases, D operations) where facility staff and the health department work on Junctura.",
+  "description": "Cổng Junctura Workspace, the GUI of Layer 2: public pages presenting the installed industry pack and the signed-in workspace (H work, P cases, D operations) where unit staff and the coordinating unit work on Junctura.",
   "license": "Apache-2.0",
   "type": "module",
   "homepage": "https://github.com/vku2-open-source-2026/junctura-workspace/tree/main/app",
@@ -26,7 +26,8 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "lucide-react": "^1.76.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@junctura/ui": "file:../packages/ui"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

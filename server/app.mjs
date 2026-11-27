@@ -5,8 +5,9 @@
 // network: `verifyToken` (JWKS), `junctura` (the SDK client of the backend
 // application), `fetchExecution` (profile existence on Layer 1 with the caller's
 // token), `staffFor` (the caller's verified Directory identity, resolved with
-// the caller's own token; an optional `?unit=` selects among verified units)
-// and `now`. Errors are `{ error: code }`.
+// the caller's own token; an optional `?unit=` selects among verified units),
+// `packProjection` (the public presentation of the installed pack) and `now`.
+// Errors are `{ error: code }`.
 // Nothing is ever logged here: no tokens, no note or file content.
 import { AuthError } from "./jwt.mjs";
 import { COLLECTIONS, createFile, createNote, createNotice, filesForExecution, latestNotices, notesForExecution, readFile } from "./store.mjs";
@@ -87,7 +88,7 @@ async function readFileBody(req) {
 }
 
 /** The route returns a response, or throws. `token` is the caller's access token. */
-export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now = () => new Date() }) {
+export function createApp({ verifyToken, junctura, fetchExecution, staffFor, packProjection, now = () => new Date() }) {
   async function authenticate(req, url) {
     const match = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ""));
     if (!match) throw new ApiError(401, "unauthorized");
@@ -111,7 +112,13 @@ export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now
     const stamp = () => now().toISOString();
 
     if (path === "/api/me" && method === "GET") {
-      return [200, { username: staff.username, displayName: staff.displayName, facility: staff.facility }];
+      return [200, {
+        username: staff.username,
+        displayName: staff.displayName,
+        facility: staff.facility,
+        groups: staff.groups,
+        canPublish: staff.canPublish,
+      }];
     }
 
     if (path === "/api/bang-tin") {
@@ -175,6 +182,14 @@ export function createApp({ verifyToken, junctura, fetchExecution, staffFor, now
     }
     try {
       if (url.pathname === "/api" || !url.pathname.startsWith("/api/") || url.pathname.includes("//")) return send(res, 404, { error: "not_found" });
+      // The pack projection is the one public route: a read-only, whitelisted
+      // view of the installed pack (labels, record types, forms, workflows,
+      // groups, deadlines — no user data, no sample units). Everything else
+      // requires a verified staff token.
+      if (url.pathname === "/api/pack") {
+        if (req.method === "GET") return send(res, 200, packProjection);
+        return send(res, 404, { error: "not_found" });
+      }
       const caller = await authenticate(req, url);
       const outcome = await route(req, url, caller);
       if (!outcome) return send(res, 404, { error: "not_found" });

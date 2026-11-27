@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ReactNode } from "react";
-import { cn, JuncturaMark } from "@junctura/health-ui";
+import { cn, JuncturaMark } from "@junctura/ui";
 import { SPACE_ROUTES } from "./routes";
 import { spaceStrings as s } from "./strings";
 

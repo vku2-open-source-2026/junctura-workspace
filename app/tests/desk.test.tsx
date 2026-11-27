@@ -1,21 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import {
   CaseDetailPage,
   DESK_ROUTES,
-  DeskProvider,
   ExecutionsPage,
   OpenCasePage,
   deskPageFor,
   isDeskRoute,
   type DeskApi,
-  type DeskStaff,
 } from "../src/desk";
 import { deskStrings as s } from "../src/desk/strings";
-import { REFERENCE_PATTERN } from "../src/desk/data";
+import { REFERENCE_PATTERN, generateReference } from "../src/pack/data";
+import { EDUCATION_PACK, HEALTH_PACK, EDUCATION_OFFICER, HEALTH_NURSE, fieldLabel, renderDeskPack, staffOf } from "./helpers";
 
 afterEach(() => { window.location.hash = ""; vi.restoreAllMocks(); });
 
@@ -78,7 +77,8 @@ const makeApi = (options: {
         const result = options.blob?.(path);
         if (result instanceof Error) throw result;
         return result as never;
-      },      postBytes: async (path, file, headers) => {
+      },
+      postBytes: async (path, file, headers) => {
         bytesCalls.push({ path, file, headers });
         const result = options.bytes?.(path, file, headers);
         if (result instanceof Error) throw result;
@@ -88,19 +88,10 @@ const makeApi = (options: {
   };
 };
 
-const staffOf = (facility: DeskStaff["facility"]): DeskStaff => ({
-  username: `nv-${facility}`,
-  displayName: "Nguyễn Văn A",
-  facility,
-});
+// ---------------------------------------------------------------- engine fixtures
 
-const renderDesk = (page: ReactElement, facility: DeskStaff["facility"], api: DeskApi) =>
-  render(<DeskProvider staff={staffOf(facility)} api={api} signOut={() => {}}>{page}</DeskProvider>);
-
-// ---------------------------------------------------------------- fixtures
-
-const STEP_CHUYEN_TUYEN = "Tiếp nhận ở Trạm y tế";
-const STEP_BENH_VIEN = "Bác sĩ bệnh viện duyệt";
+const STEP_VAN_THU = "Tiếp nhận hồ sơ";
+const STEP_LANH_DAO = "Xét duyệt chuyển trường";
 
 interface Fixture {
   id?: string;
@@ -111,39 +102,36 @@ interface Fixture {
   groups?: string[];
   stepName?: string | null;
   updatedAt?: string;
-  mucKhan?: string;
 }
 
 const buildExecution = (fixture: Fixture = {}) => ({
   id: fixture.id ?? "11111111-1111-4111-8111-111111111111",
   definition: {
-    id: fixture.key ?? "junctura_chuyen_tuyen",
-    key: fixture.key ?? "junctura_chuyen_tuyen",
-    name: fixture.name ?? "Chuyển tuyến khám chữa bệnh",
+    id: fixture.key ?? "chuyentruong",
+    key: fixture.key ?? "chuyentruong",
+    name: fixture.name ?? "Chuyển trường",
     version: 1,
   },
   status: fixture.status ?? ("running" as const),
   startedAt: "2026-11-17T09:00:00Z",
   updatedAt: fixture.updatedAt ?? "2026-11-18T09:00:00Z",
-  title: fixture.title ?? "CT-100001",
+  title: fixture.title ?? "CH-100001",
   currentStep: fixture.stepName === null ? null : {
-    name: fixture.stepName ?? STEP_CHUYEN_TUYEN,
+    name: fixture.stepName ?? STEP_VAN_THU,
     assignee: null,
-    groups: fixture.groups ?? ["tram-y-te"],
+    groups: fixture.groups ?? ["van-thu"],
   },
-  ...(fixture.mucKhan === undefined ? {} : { input: { mucKhan: fixture.mucKhan } }),
 });
 
 const EXECUTIONS = [
   buildExecution({}),
-  buildExecution({ id: "22222222-2222-4222-8222-222222222222", title: "CT-100002", stepName: STEP_BENH_VIEN, groups: ["benh-vien"] }),
+  buildExecution({ id: "22222222-2222-4222-8222-222222222222", title: "CH-100002", stepName: STEP_LANH_DAO, groups: ["lanh-dao"] }),
 ];
 
 const DEFINITIONS = {
   items: [
-    { id: "def-ct", key: "junctura_chuyen_tuyen", version: 2, name: "Chuyển tuyến khám chữa bệnh" },
-    { id: "def-dt", key: "junctura_xac_minh_don_thuoc", version: 1, name: "Xác minh đơn thuốc" },
-    { id: "def-cp", key: "junctura_xac_minh_chi_phi", version: 3, name: "Xác minh chi phí" },
+    { id: "def-ct", key: "chuyentruong", version: 2, name: "Chuyển trường" },
+    { id: "def-hb", key: "capbansaohocba", version: 1, name: "Cấp bản sao học bạ" },
   ],
 };
 
@@ -173,7 +161,7 @@ describe("space navigation", () => {
   it("renders a page with a heading for every H and P route", async () => {
     const api = makeApi({});
     for (const route of ["/lam-viec", "/lam-viec/bang-tin", "/lam-viec/danh-ba", "/ho-so", "/ho-so/mo"]) {
-      const { unmount } = renderDesk(deskPageFor(route) as ReactElement, "tram-y-te", api.api);
+      const { unmount } = renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, deskPageFor(route) as ReactElement, api.api);
       await screen.findByRole("heading", { level: 1 });
       unmount();
     }
@@ -192,14 +180,14 @@ describe("space navigation", () => {
   });
 
   it("redirects the old desk routes to H (Hôm nay)", async () => {
-    renderDesk(deskPageFor("/dieu-phoi") as ReactElement, "tram-y-te", makeApi({}).api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, deskPageFor("/dieu-phoi") as ReactElement, makeApi({}).api);
     await waitFor(() => expect(window.location.hash).toBe("#/lam-viec"));
-    renderDesk(deskPageFor("/dieu-phoi/ho-so") as ReactElement, "tram-y-te", makeApi({}).api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, deskPageFor("/dieu-phoi/ho-so") as ReactElement, makeApi({}).api);
     await waitFor(() => expect(window.location.hash).toBe("#/lam-viec"));
   });
 
   it("shows the not-found desk page for an unknown desk route", () => {
-    renderDesk(deskPageFor("/lam-viec/khong-co") as ReactElement, "tram-y-te", makeApi({}).api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, deskPageFor("/lam-viec/khong-co") as ReactElement, makeApi({}).api);
     expect(screen.getByText(s.errors.notFoundPage)).toBeTruthy();
     expect(screen.getByRole("link", { name: s.errors.notFoundPageAction }).getAttribute("href")).toBe("#/lam-viec");
   });
@@ -208,57 +196,47 @@ describe("space navigation", () => {
 // ---------------------------------------------------------------- cases list (P · Danh sách)
 
 describe("cases list page", () => {
-  it("shows the medical cases with code, workflow, status, step and facility", async () => {
+  it("shows the pack cases with code, workflow, status, step and acting groups", async () => {
     const api = makeApi({ get: () => ({ items: EXECUTIONS }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <ExecutionsPage />, api.api);
     expect(api.gets).toEqual(["/v1/workflows/executions?limit=100"]);
-    await screen.findByText("CT-100001");
-    expect(screen.getByText("CT-100002")).toBeTruthy();
-    const row = screen.getByText("CT-100002").closest("tr")!;
-    expect(row.textContent).toContain(STEP_BENH_VIEN);
-    expect(row.textContent).toContain("Bệnh viện");
-    expect(screen.queryByText(s.urgency.column)).toBeNull();
+    await screen.findByText("CH-100001");
+    expect(screen.getByText("CH-100002")).toBeTruthy();
+    const row = screen.getByText("CH-100002").closest("tr")!;
+    expect(row.textContent).toContain(STEP_LANH_DAO);
+    expect(row.textContent).toContain("Lãnh đạo đơn vị");
   });
 
-  it("shows the urgency column only when the list items carry the digital form", async () => {
-    const api = makeApi({ get: () => ({ items: [buildExecution({ mucKhan: "khan" })] }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100001");
-    expect(screen.getByText(s.urgency.column)).toBeTruthy();
-    expect(screen.getByText(s.urgency.khan)).toBeTruthy();
+  it("keeps only the workflows the installed pack declares", async () => {
+    const api = makeApi({ get: () => ({ items: [buildExecution({ key: "quy-trinh-le", title: "ZZ-000001" }), ...EXECUTIONS] }) });
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <ExecutionsPage />, api.api);
+    await screen.findByText("CH-100001");
+    expect(screen.queryByText("ZZ-000001")).toBeNull();
   });
 
-  it("refetches with the selected status filter", async () => {
+  it("filters to the cases waiting at the staff's groups with the toggle", async () => {
     const api = makeApi({ get: () => ({ items: EXECUTIONS }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100001");
-    fireEvent.click(screen.getByRole("button", { name: s.status.running }));
-    await screen.findByText("CT-100001");
-    expect(api.gets).toContain("/v1/workflows/executions?limit=100&status=running");
-  });
-
-  it("filters to the cases waiting at the staff facility with the toggle", async () => {
-    const api = makeApi({ get: () => ({ items: EXECUTIONS }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100002");
+    const clerk = staffOf("truong", ["/truong/hoc-vu", "/truong/van-thu"]);
+    renderDeskPack(EDUCATION_PACK, clerk, <ExecutionsPage />, api.api);
+    await screen.findByText("CH-100002");
     fireEvent.click(screen.getByLabelText(s.cases.mineOnly));
-    expect(screen.queryByText("CT-100002")).toBeNull();
-    expect(screen.getByText("CT-100001")).toBeTruthy();
+    expect(screen.queryByText("CH-100002")).toBeNull();
+    expect(screen.getByText("CH-100001")).toBeTruthy();
     fireEvent.click(screen.getByLabelText(s.cases.mineOnly));
-    await screen.findByText("CT-100002");
+    await screen.findByText("CH-100002");
   });
 
   it("links to the moved open-case and detail routes", async () => {
     const api = makeApi({ get: () => ({ items: EXECUTIONS }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100001");
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <ExecutionsPage />, api.api);
+    await screen.findByText("CH-100001");
     expect(screen.getByRole("link", { name: s.cases.openCase }).getAttribute("href")).toBe("#/ho-so/mo");
-    expect(screen.getByRole("link", { name: "CT-100001" }).getAttribute("href")).toBe("#/ho-so/11111111-1111-4111-8111-111111111111");
+    expect(screen.getByRole("link", { name: "CH-100001" }).getAttribute("href")).toBe("#/ho-so/11111111-1111-4111-8111-111111111111");
   });
 
   it("renders the 403 message as plain Vietnamese", async () => {
     const api = makeApi({ get: () => Object.assign(new Error("api"), { status: 403, code: null }) });
-    renderDesk(<ExecutionsPage />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <ExecutionsPage />, api.api);
     await screen.findByText(s.errors.forbidden);
   });
 });
@@ -266,46 +244,43 @@ describe("cases list page", () => {
 // ---------------------------------------------------------------- open case (P · Mở hồ sơ)
 
 describe("open case page", () => {
-  it("offers only the workflows the facility may open and posts the digital form in the input", async () => {
+  it("offers the workflows the staff's verified groups may open and posts the pack's open form", async () => {
     const api = makeApi({ get: () => ({ items: DEFINITIONS.items }), post: () => ({ id: "66666666-6666-4666-8666-666666666666" }) });
-    renderDesk(<OpenCasePage />, "nha-thuoc", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <OpenCasePage />, api.api);
     expect(api.gets).toEqual(["/v1/workflows/definitions"]);
     await screen.findByText(s.openCase.submit);
     const select = screen.getByLabelText(s.openCase.workflow) as HTMLSelectElement;
-    expect([...select.options].map(option => option.value)).toEqual(["junctura_xac_minh_don_thuoc"]);
+    expect([...select.options].map(option => option.value)).toEqual(["chuyentruong", "capbansaohocba"]);
     const reference = (screen.getByLabelText(s.openCase.reference) as HTMLInputElement).value;
     expect(reference).toMatch(REFERENCE_PATTERN);
-    expect((screen.getByLabelText(s.openCase.urgency) as HTMLSelectElement).value).toBe("thuong");
-    const coSoNhan = screen.getByLabelText(s.openCase.coSoNhan) as HTMLSelectElement;
-    expect([...coSoNhan.options].map(option => option.value)).toEqual(["", "nha-thuoc", "benh-vien"]);
-    fireEvent.change(coSoNhan, { target: { value: "benh-vien" } });
-    fireEvent.change(screen.getByLabelText(s.openCase.ghiChu), { target: { value: "Chuyển tiếp sáng thứ hai." } });
+    expect((screen.getByLabelText(fieldLabel("Họ tên học sinh")) as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText(fieldLabel("Họ tên học sinh")), { target: { value: "Nguyễn Văn B" } });
+    fireEvent.change(screen.getByLabelText(fieldLabel("Lớp hiện tại")), { target: { value: "5A" } });
+    fireEvent.change(screen.getByLabelText(fieldLabel("Trường muốn chuyển đến")), { target: { value: "Trường Bắc" } });
     fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
     await waitFor(() => expect(api.posts).toHaveLength(1));
     expect(api.posts[0].path).toBe("/v1/workflows/executions");
     expect(api.posts[0].body).toEqual({
-      definitionId: "def-dt",
-      input: { reference, openedBy: "nha-thuoc", mucKhan: "thuong", coSoNhan: "benh-vien", ghiChu: "Chuyển tiếp sáng thứ hai." },
+      definitionId: "def-ct",
+      input: { reference, openedBy: "truong", "ho-ten-hoc-sinh": "Nguyễn Văn B", "lop-hien-tai": "5A", "truong-chuyen-den": "Trường Bắc" },
     });
     expect(api.posts[0].opts?.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     await waitFor(() => expect(window.location.hash).toBe("#/ho-so/66666666-6666-4666-8666-666666666666"));
   });
 
-  it("offers the urgency levels with their Vietnamese labels", async () => {
-    const api = makeApi({ get: () => ({ items: DEFINITIONS.items }) });
-    renderDesk(<OpenCasePage />, "nha-thuoc", api.api);
+  it("blocks the submit while a required pack field is empty", async () => {
+    const api = makeApi({ get: () => ({ items: DEFINITIONS.items }), post: () => ({ id: "x" }) });
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <OpenCasePage />, api.api);
     await screen.findByText(s.openCase.submit);
-    const urgency = screen.getByLabelText(s.openCase.urgency) as HTMLSelectElement;
-    expect([...urgency.options].map(option => option.textContent)).toEqual([s.urgency.thuong, s.urgency.khan, s.urgency["cap-cuu"]]);
-    fireEvent.change(urgency, { target: { value: "cap-cuu" } });
     fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
-    await waitFor(() => expect(api.posts).toHaveLength(1));
-    expect((api.posts[0].body as { input: { mucKhan: string } }).input.mucKhan).toBe("cap-cuu");
+    await screen.findByRole("alert");
+    expect(screen.getByText(s.openCase.requiredEmpty)).toBeTruthy();
+    expect(api.posts).toHaveLength(0);
   });
 
   it("blocks an invalid reference code", async () => {
     const api = makeApi({ get: () => ({ items: DEFINITIONS.items }), post: () => ({ id: "x" }) });
-    renderDesk(<OpenCasePage />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <OpenCasePage />, api.api);
     await screen.findByText(s.openCase.submit);
     fireEvent.change(screen.getByLabelText(s.openCase.reference), { target: { value: "ct-123" } });
     fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
@@ -314,46 +289,56 @@ describe("open case page", () => {
     expect(api.posts).toHaveLength(0);
   });
 
-  it("blocks a note longer than 300 characters before sending", async () => {
-    const api = makeApi({ get: () => ({ items: DEFINITIONS.items }) });
-    renderDesk(<OpenCasePage />, "tram-y-te", api.api);
-    await screen.findByText(s.openCase.submit);
-    fireEvent.change(screen.getByLabelText(s.openCase.ghiChu), { target: { value: "a".repeat(301) } });
-    fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
-    await screen.findByText(s.openCase.ghiChuLong);
-    expect(api.posts).toHaveLength(0);
-  });
-
   it("keeps the same idempotency key when the staff clicks again after a failure", async () => {
     const api = makeApi({
       get: () => ({ items: DEFINITIONS.items }),
       post: () => Object.assign(new Error("api"), { status: 503, code: "engine_unavailable" }),
     });
-    renderDesk(<OpenCasePage />, "bao-hiem", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <OpenCasePage />, api.api);
     await screen.findByText(s.openCase.submit);
+    fireEvent.change(screen.getByLabelText(fieldLabel("Họ tên học sinh")), { target: { value: "Nguyễn Văn B" } });
+    fireEvent.change(screen.getByLabelText(fieldLabel("Lớp hiện tại")), { target: { value: "5A" } });
+    fireEvent.change(screen.getByLabelText(fieldLabel("Trường muốn chuyển đến")), { target: { value: "Trường Bắc" } });
     fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
     await waitFor(() => expect(api.posts).toHaveLength(1));
     fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
     await waitFor(() => expect(api.posts).toHaveLength(2));
     expect(api.posts[0].opts?.idempotencyKey).toBeTruthy();
     expect(api.posts[0].opts?.idempotencyKey).toBe(api.posts[1].opts?.idempotencyKey);
-    expect(api.posts[1].body).toEqual({
-      definitionId: "def-cp",
-      input: { reference: (api.posts[0].body as { input: { reference: string } }).input.reference, openedBy: "bao-hiem", mucKhan: "thuong" },
-    });
   });
 
-  it("shows the empty state for facilities that open nothing", async () => {
+  it("shows the empty state when no pack workflow is openable by the staff's groups", async () => {
     const api = makeApi({});
-    renderDesk(<OpenCasePage />, "so-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, staffOf("phong-giao-duc", ["/phong-giao-duc/van-thu"]), <OpenCasePage />, api.api);
     await screen.findByText(s.openCase.noWorkflow);
     expect(screen.queryByRole("button", { name: s.openCase.submit })).toBeNull();
   });
 
   it("renders the 403 message when the staff may not open a case", async () => {
     const api = makeApi({ get: () => Object.assign(new Error("api"), { status: 403, code: null }) });
-    renderDesk(<OpenCasePage />, "nha-thuoc", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <OpenCasePage />, api.api);
     await screen.findByText(s.errors.forbidden);
+  });
+
+  it("renders the health pack's open form with its own fields from the same component", async () => {
+    const api = makeApi({ get: () => ({ items: [{ id: "def-ct", key: "chuyen-tuyen", version: 1, name: "Chuyển tuyến" }] }), post: () => ({ id: "y" }) });
+    renderDeskPack(HEALTH_PACK, staffOf("phong-kham", ["/phong-kham/bac-si"]), <OpenCasePage />, api.api);
+    await screen.findByText(s.openCase.submit);
+    const select = screen.getByLabelText(s.openCase.workflow) as HTMLSelectElement;
+    expect([...select.options].map(option => option.value)).toEqual(["chuyen-tuyen"]);
+    expect(screen.getByLabelText(fieldLabel("Lý do chuyển tuyến"))).toBeTruthy();
+    const urgency = screen.getByLabelText(fieldLabel("Mức ưu tiên")) as HTMLSelectElement;
+    expect([...urgency.options].map(option => option.textContent)).toEqual(["—", "Cấp cứu", "Khẩn", "Thường"]);
+    expect(screen.queryByLabelText("Họ tên học sinh")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
+    await screen.findByText(s.openCase.requiredEmpty);
+    fireEvent.change(screen.getByLabelText(fieldLabel("Lý do chuyển tuyến")), { target: { value: "Cần phẫu thuật." } });
+    fireEvent.change(urgency, { target: { value: "Khẩn" } });
+    fireEvent.click(screen.getByRole("button", { name: s.openCase.submit }));
+    await waitFor(() => expect(api.posts).toHaveLength(1));
+    expect((api.posts[0].body as { input: Record<string, unknown> }).input).toMatchObject({
+      openedBy: "phong-kham", "ly-do-chuyen-tuyen": "Cần phẫu thuật.", "muc-uu-tien": "Khẩn",
+    });
   });
 });
 
@@ -365,14 +350,16 @@ const DETAIL = {
   definitionId: "def-ct",
   status: "running",
   input: {
-    reference: "CT-123456",
-    openedBy: "tram-y-te",
-    mucKhan: "khan",
-    coSoNhan: "benh-vien",
-    ghiChu: "Mời bệnh viện duyệt sớm.",
+    reference: "CH-123456",
+    openedBy: "truong",
+    "ho-ten-hoc-sinh": "Nguyễn Văn B",
+    "lop-hien-tai": "5A",
+    "truong-chuyen-den": "Trường Bắc",
   },
 };
-const DETAIL_LIST = { items: [buildExecution({ id: DETAIL_ID, title: "CT-123456", stepName: STEP_BENH_VIEN, groups: ["benh-vien"] })] };
+const DETAIL_LIST = { items: [buildExecution({ id: DETAIL_ID, title: "CH-123456", stepName: STEP_LANH_DAO, groups: ["lanh-dao"] })] };
+
+const COORDINATOR_STAFF = staffOf("so-y-te", ["/so-y-te/ban-tin"], true);
 
 const detailOrCases = (path: string): unknown => {
   if (path.includes("/ghi-chu")) return { items: [] };
@@ -381,48 +368,45 @@ const detailOrCases = (path: string): unknown => {
 };
 
 describe("case detail page", () => {
-  it("draws the workflow steps with progress and the responsible facilities", async () => {
+  it("draws the pack workflow steps with progress and the acting groups", async () => {
     const api = makeApi({ get: detailOrCases });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     expect(api.gets.slice(0, 2)).toEqual([`/v1/workflows/executions/${DETAIL_ID}`, "/v1/workflows/executions?limit=100"]);
-    await screen.findAllByText("CT-123456");
-    expect(within(screen.getByRole("main")).getAllByText("Trạm y tế").length).toBe(2); // openedBy + first step group
-    expect(within(screen.getByRole("main")).getAllByText("Bệnh viện").length).toBe(3); // coSoNhan + current + next step groups
+    await screen.findAllByText("CH-123456");
+    expect(within(screen.getByRole("main")).getAllByText("Nguyễn Văn B").length).toBe(1); // pack field of the input
+    expect(within(screen.getByRole("main")).getAllByText("Văn thư").length).toBeGreaterThan(0);
     expect(screen.getByText(s.detail.stepCurrent)).toBeTruthy();
     expect(screen.getAllByText(s.detail.stepFuture).length).toBeGreaterThan(0);
   });
 
-  it("shows the digital form fields of the case", async () => {
+  it("shows the opener's input with the pack's field labels", async () => {
     const api = makeApi({ get: detailOrCases });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText(s.detail.form.title);
-    expect(screen.getByText(s.urgency.khan)).toBeTruthy();
-    expect(screen.getByText(s.detail.form.ghiChu).nextElementSibling?.textContent).toBe("Mời bệnh viện duyệt sớm.");
-    expect(within(screen.getByRole("main")).getAllByText("Bệnh viện").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Họ tên học sinh")).toBeTruthy();
+    expect(screen.getByText("Trường muốn chuyển đến").nextElementSibling?.textContent).toBe("Trường Bắc");
   });
 
-  it("shows the complete button only to the facility of the current step", async () => {
+  it("shows the complete button only to the group of the current step", async () => {
     const api = makeApi({ get: detailOrCases });
-    const { unmount } = renderDesk(<CaseDetailPage id={DETAIL_ID} />, "benh-vien", api.api);
-    await screen.findByRole("button", { name: `Hoàn tất bước ${STEP_BENH_VIEN}` });
+    const officer = staffOf("phong-giao-duc", ["/phong-giao-duc/lanh-dao"]);
+    const { unmount } = renderDeskPack(EDUCATION_PACK, officer, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByRole("button", { name: `Hoàn tất bước ${STEP_LANH_DAO}` });
     unmount();
   });
 
-  it("hides the complete button for other facilities and the authority", async () => {
-    for (const facility of ["tram-y-te", "so-y-te"] as const) {
-      const api = makeApi({ get: detailOrCases });
-      const { unmount } = renderDesk(<CaseDetailPage id={DETAIL_ID} />, facility, api.api);
-      await screen.findAllByText("CT-123456");
-      expect(screen.queryByRole("button", { name: new RegExp(s.detail.completeStep) })).toBeNull();
-      if (facility === "so-y-te") expect(screen.getByText(s.detail.readonly)).toBeTruthy();
-      unmount();
-    }
+  it("hides the complete button for other groups and tells them the view is read-only", async () => {
+    const api = makeApi({ get: detailOrCases });
+    renderDeskPack(EDUCATION_PACK, HEALTH_NURSE, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findAllByText("CH-123456");
+    expect(screen.queryByRole("button", { name: new RegExp(s.detail.completeStep) })).toBeNull();
+    expect(screen.getByText(s.detail.readonly)).toBeTruthy();
   });
 
   it("completes the current step after confirmation and reloads", async () => {
     const api = makeApi({ get: detailOrCases, post: () => ({}) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "benh-vien", api.api);
-    fireEvent.click(await screen.findByRole("button", { name: `Hoàn tất bước ${STEP_BENH_VIEN}` }));
+    renderDeskPack(EDUCATION_PACK, staffOf("phong-giao-duc", ["/phong-giao-duc/lanh-dao"]), <CaseDetailPage id={DETAIL_ID} />, api.api);
+    fireEvent.click(await screen.findByRole("button", { name: `Hoàn tất bước ${STEP_LANH_DAO}` }));
     fireEvent.click(await screen.findByRole("button", { name: s.detail.confirmLabel }));
     await waitFor(() => expect(api.posts).toHaveLength(1));
     expect(api.posts[0].path).toBe(`/v1/workflows/executions/${DETAIL_ID}/complete`);
@@ -432,20 +416,20 @@ describe("case detail page", () => {
 
   it("links back to the moved case list", async () => {
     const api = makeApi({ get: detailOrCases });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText(s.detail.form.title);
     expect(screen.getByRole("link", { name: `← ${s.detail.backToList}` }).getAttribute("href")).toBe("#/ho-so");
   });
 
   it("renders the 403 message when completing is not allowed", async () => {
     const api = makeApi({ get: () => Object.assign(new Error("api"), { status: 403, code: null }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "benh-vien", api.api);
+    renderDeskPack(EDUCATION_PACK, staffOf("phong-giao-duc", ["/phong-giao-duc/lanh-dao"]), <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText(s.errors.forbidden);
   });
 
   it("renders the 404 message for a missing case", async () => {
     const api = makeApi({ get: () => Object.assign(new Error("api"), { status: 404, code: null }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "so-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, COORDINATOR_STAFF, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText(s.errors.notFound);
   });
 });
@@ -453,15 +437,15 @@ describe("case detail page", () => {
 // ---------------------------------------------------------------- notes and attachments (P · Chi tiết)
 
 const noteOrCases = (path: string): unknown => {
-  if (path.includes("/ghi-chu")) return { items: [{ id: "note-1", executionId: DETAIL_ID, text: "Ghi chú đầu.", author: { displayName: "Bệnh viện", facility: "benh-vien" }, createdAt: "2026-11-18T08:00:00Z" }] };
+  if (path.includes("/ghi-chu")) return { items: [{ id: "note-1", executionId: DETAIL_ID, text: "Ghi chú đầu.", author: { displayName: "Trường học", facility: "truong" }, createdAt: "2026-11-18T08:00:00Z" }] };
   if (path.includes("/tep")) return { items: [] };
   return detailOrCases(path);
 };
 
 describe("case notes", () => {
   it("reads the notes of the gateway and posts a new one at the end", async () => {
-    const api = makeApi({ get: noteOrCases, post: () => ({ id: "note-2", executionId: DETAIL_ID, text: "Ghi chú mới.", author: { displayName: "Nguyễn Văn A", facility: "tram-y-te" }, createdAt: "2026-11-18T09:00:00Z" }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    const api = makeApi({ get: noteOrCases, post: () => ({ id: "note-2", executionId: DETAIL_ID, text: "Ghi chú mới.", author: { displayName: "Nguyễn Văn A", facility: "truong" }, createdAt: "2026-11-18T09:00:00Z" }) });
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText("Ghi chú đầu.");
     expect(api.gets).toContain(`/api/ho-so/${DETAIL_ID}/ghi-chu`);
     fireEvent.change(screen.getByLabelText(s.detail.notes.input), { target: { value: "Ghi chú mới." } });
@@ -475,7 +459,7 @@ describe("case notes", () => {
 
   it("keeps the note when the gateway returns nothing and reloads instead", async () => {
     const api = makeApi({ get: noteOrCases, post: () => null });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText("Ghi chú đầu.");
     fireEvent.change(screen.getByLabelText(s.detail.notes.input), { target: { value: "Ghi chú mới." } });
     fireEvent.click(screen.getByRole("button", { name: s.detail.notes.submit }));
@@ -485,7 +469,7 @@ describe("case notes", () => {
 
   it("shows a plain Vietnamese failure when posting is refused", async () => {
     const api = makeApi({ get: noteOrCases, post: () => Object.assign(new Error("api"), { status: 403, code: null }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
     await screen.findByText("Ghi chú đầu.");
     fireEvent.change(screen.getByLabelText(s.detail.notes.input), { target: { value: "Ghi chú mới." } });
     fireEvent.click(screen.getByRole("button", { name: s.detail.notes.submit }));
@@ -501,22 +485,22 @@ const fileBlob = (options: { type: string; name: string; size?: number }): File 
 };
 
 const fileOrCases = (path: string): unknown => {
-  if (path.includes("/tep")) return { items: [{ id: "file-1", executionId: DETAIL_ID, name: "toa.pdf", type: "application/pdf", bytes: 12, author: { displayName: "Bệnh viện", facility: "benh-vien" }, createdAt: "2026-11-18T08:00:00Z" }] };
+  if (path.includes("/tep")) return { items: [{ id: "file-1", executionId: DETAIL_ID, name: "hoso.pdf", type: "application/pdf", bytes: 12, author: { displayName: "Trường học", facility: "truong" }, createdAt: "2026-11-18T08:00:00Z" }] };
   return detailOrCases(path);
 };
 
 describe("case attachments", () => {
   it("lists the attachments of the case", async () => {
     const api = makeApi({ get: fileOrCases });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-    await screen.findByText("toa.pdf");
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByText("hoso.pdf");
     expect(api.gets).toContain(`/api/ho-so/${DETAIL_ID}/tep`);
   });
 
   it("blocks a wrong file kind and an oversized file before sending anything", async () => {
     const api = makeApi({ get: fileOrCases });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-    await screen.findByText("toa.pdf");
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByText("hoso.pdf");
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [fileBlob({ type: "text/plain", name: "ghi-chu.txt" })] } });
     fireEvent.click(screen.getByRole("button", { name: s.detail.files.submit }));
@@ -529,24 +513,24 @@ describe("case attachments", () => {
   });
 
   it("sends the raw bytes with Content-Type and X-File-Name headers", async () => {
-    const api = makeApi({ get: fileOrCases, bytes: () => ({ id: "file-2", executionId: DETAIL_ID, name: "toa.pdf", type: "application/pdf", bytes: 10, author: { displayName: "Nguyễn Văn A", facility: "tram-y-te" }, createdAt: "2026-11-18T09:00:00Z" }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-    await screen.findByText("toa.pdf");
+    const api = makeApi({ get: fileOrCases, bytes: () => ({ id: "file-2", executionId: DETAIL_ID, name: "hoso.pdf", type: "application/pdf", bytes: 10, author: { displayName: "Nguyễn Văn A", facility: "truong" }, createdAt: "2026-11-18T09:00:00Z" }) });
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByText("hoso.pdf");
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [fileBlob({ type: "application/pdf", name: "toa.pdf" })] } });
+    fireEvent.change(input, { target: { files: [fileBlob({ type: "application/pdf", name: "hoso.pdf" })] } });
     fireEvent.click(screen.getByRole("button", { name: s.detail.files.submit }));
     await waitFor(() => expect(api.bytesCalls).toHaveLength(1));
     expect(api.bytesCalls[0].path).toBe(`/api/ho-so/${DETAIL_ID}/tep`);
     expect(api.bytesCalls[0].headers["Content-Type"]).toBe("application/pdf");
-    expect(api.bytesCalls[0].headers["X-File-Name"]).toBe(encodeURIComponent("toa.pdf"));
+    expect(api.bytesCalls[0].headers["X-File-Name"]).toBe(encodeURIComponent("hoso.pdf"));
     expect(api.bytesCalls[0].file.size).toBe(10);
     await waitFor(() => expect(api.gets.filter(path => path.includes("/tep")).length).toBe(2));
   });
 
   it("tells a malware detection in plain Vietnamese on 422", async () => {
     const api = makeApi({ get: fileOrCases, bytes: () => Object.assign(new Error("api"), { status: 422, code: "malware_detected" }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-    await screen.findByText("toa.pdf");
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByText("hoso.pdf");
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [fileBlob({ type: "image/png", name: "anh.png" })] } });
     fireEvent.click(screen.getByRole("button", { name: s.detail.files.submit }));
@@ -564,8 +548,8 @@ describe("case attachments", () => {
     URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
     try {
       const api = makeApi({ get: fileOrCases, blob: () => new Blob(["pdf"], { type: "application/pdf" }) });
-      renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-      await screen.findByText("toa.pdf");
+      renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+      await screen.findByText("hoso.pdf");
       fireEvent.click(screen.getByRole("button", { name: s.detail.files.download }));
       await waitFor(() => expect(api.blobs).toEqual(["/api/tep/file-1"]));
       await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
@@ -578,9 +562,58 @@ describe("case attachments", () => {
 
   it("shows a download failure in plain Vietnamese", async () => {
     const api = makeApi({ get: fileOrCases, blob: () => Object.assign(new Error("api"), { status: 404, code: null }) });
-    renderDesk(<CaseDetailPage id={DETAIL_ID} />, "tram-y-te", api.api);
-    await screen.findByText("toa.pdf");
+    renderDeskPack(EDUCATION_PACK, EDUCATION_OFFICER, <CaseDetailPage id={DETAIL_ID} />, api.api);
+    await screen.findByText("hoso.pdf");
     fireEvent.click(screen.getByRole("button", { name: s.detail.files.download }));
     await screen.findByText(s.detail.files.downloadFailed);
+  });
+});
+
+// ---------------------------------------------------------------- two-unit session
+
+describe("a staff member of two units acts only through the selected unit", () => {
+  // Verified membership: nurse at `benh-vien`, plus a pharmacist group that
+  // belongs to the other unit `phong-kham`. Bare group-suffix matching would
+  // grant the pharmacy rights; matching against the selected unit must not.
+  const TWO_UNIT = staffOf("benh-vien", ["/benh-vien/y-ta", "/phong-kham/bac-si"]);
+
+  it("does not open the workflows whose open role the other unit's group carries", async () => {
+    const api = makeApi({ get: () => ({ items: [{ id: "def-ct", key: "chuyen-tuyen", version: 1, name: "Chuyển tuyến" }] }) });
+    renderDeskPack(HEALTH_PACK, TWO_UNIT, <OpenCasePage />, api.api);
+    await screen.findByText(s.openCase.noWorkflow);
+    expect(screen.queryByRole("button", { name: s.openCase.submit })).toBeNull();
+  });
+
+  it("does not count a case waiting at the other unit's group as its own", async () => {
+    const waiting = buildExecution({ key: "chuyen-tuyen", name: "Chuyển tuyến", title: "CT-100001", stepName: "Khám và chỉ định", groups: ["bac-si"] });
+    const api = makeApi({ get: () => ({ items: [waiting] }) });
+    renderDeskPack(HEALTH_PACK, TWO_UNIT, <ExecutionsPage />, api.api);
+    await screen.findByText("CT-100001");
+    fireEvent.click(screen.getByLabelText(s.cases.mineOnly));
+    expect(screen.queryByText("CT-100001")).toBeNull();
+    fireEvent.click(screen.getByLabelText(s.cases.mineOnly));
+    await screen.findByText("CT-100001");
+  });
+
+  it("keeps the rights of the selected unit's own group", async () => {
+    const api = makeApi({ get: () => ({ items: [{ id: "def-ct", key: "thanh-toan", version: 1, name: "Thanh toán" }] }) });
+    // thanh-toan is opened by `tai-chinh`; a two-unit member without it still sees nothing.
+    renderDeskPack(HEALTH_PACK, TWO_UNIT, <OpenCasePage />, api.api);
+    await screen.findByText(s.openCase.noWorkflow);
+    const finance = staffOf("benh-vien", ["/benh-vien/tai-chinh"]);
+    const api2 = makeApi({ get: () => ({ items: [{ id: "def-tt", key: "thanh-toan", version: 1, name: "Thanh toán" }] }) });
+    const second = renderDeskPack(HEALTH_PACK, finance, <OpenCasePage />, api2.api);
+    await screen.findByText(s.openCase.submit);
+    expect(screen.getByRole("button", { name: s.openCase.submit })).toBeTruthy();
+    second.unmount();
+  });
+});
+
+// ---------------------------------------------------------------- pure helpers of the pack module
+
+describe("reference codes", () => {
+  it("derives the prefix from the pack workflow id and generates matching codes", () => {
+    expect(generateReference("CH-")).toMatch(/^CH-[A-Z0-9]{6}$/);
+    expect(generateReference("CA-")).toMatch(/^CA-[A-Z0-9]{6}$/);
   });
 });

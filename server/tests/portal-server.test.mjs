@@ -149,7 +149,7 @@ test("staff identity is the caller's verified Directory identity, unit by unit",
   });
   const outcome = await staffFor("tok", { sub: "login-42", preferred_username: "ysi.tramyte" }, null);
   assert.ok(outcome.ok);
-  assert.deepEqual(outcome.staff, { username: "ysi.tramyte", displayName: "Y sĩ Lê Thị Hoa", facility: "tram-y-te", canPublish: false });
+  assert.deepEqual(outcome.staff, { username: "ysi.tramyte", displayName: "Y sĩ Lê Thị Hoa", facility: "tram-y-te", groups: [], canPublish: false });
   assert.deepEqual(seen, ["tok"], "the caller's own token, nothing else");
   const coordinator = createStaffFor({ expectedTenant: TENANT, fetchIdentity: async () => ({ status: 200, body: identityBody() }) });
   assert.ok((await coordinator("t", { sub: "login-42", preferred_username: "quantri.soyte" }, null)).staff.canPublish, "the verified board group carries the publication right");
@@ -226,27 +226,42 @@ test("several verified units fail closed unless the caller names one the members
     fetchIdentity: async () => ({ status: 200, body: identityBody({ units, groups, preferredUsername: undefined }) }),
   });
   assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, null), { ok: false, status: 403, code: "forbidden" }, "several units without an explicit choice fail closed, whatever the order");
-  assert.deepEqual((await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "benh-vien")).staff, { username: "ysi", displayName: "Quản trị Sở Y tế", facility: "benh-vien", canPublish: false }, "an explicit unit of the verified membership is honoured");
+  assert.deepEqual((await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "benh-vien")).staff, { username: "ysi", displayName: "Quản trị Sở Y tế", facility: "benh-vien", groups: [`/so-y-te/${BOARD_GROUP}`], canPublish: false }, "an explicit unit of the verified membership is honoured");
   assert.deepEqual((await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "so-y-te")).staff.canPublish, true, "the group right travels with the selected unit");
   assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "nha-thuoc"), { ok: false, status: 403, code: "forbidden" }, "a unit outside the verified membership is refused");
   assert.deepEqual(await staffFor("t", { sub: "login-42", preferred_username: "ysi" }, "So_YTe"), { ok: false, status: 400, code: "invalid_input" }, "a malformed unit name is bad input");
-  const foreign = createStaffFor({
+  // No fixed unit list is baked in: a verified unit of the tenant is a portal
+  // unit, whatever sector it belongs to. A deployment that wants a restriction
+  // passes the accepted units explicitly.
+  const neutral = createStaffFor({
     expectedTenant: TENANT,
+    fetchIdentity: async () => ({ status: 200, body: identityBody({ units: ["truong"], groups: [] }) }),
+  });
+  assert.ok((await neutral("t", { sub: "login-42", preferred_username: "nv-truong" }, null)).ok, "a staff member of any verified unit signs in with their own membership");
+  const restricted = createStaffFor({
+    expectedTenant: TENANT,
+    facilities: new Set(["truong"]),
     fetchIdentity: async () => ({ status: 200, body: identityBody({ units: ["hoi-dong"] }) }),
   });
-  assert.deepEqual(await foreign("t", { sub: "login-42", preferred_username: "ysi" }), { ok: false, status: 403, code: "forbidden" }, "a unit the portal does not know is not a facility");
+  assert.deepEqual(await restricted("t", { sub: "login-42", preferred_username: "ysi" }), { ok: false, status: 403, code: "forbidden" }, "a unit outside an explicitly configured facilities set is refused");
 });
 
-test("GET /api/me answers the staff identity of the token", async () => {
+test("GET /api/me answers the staff identity of the token, groups included", async () => {
   await withServer(deps(), async base => {
     const response = await get(base, "/api/me");
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { username: ADMIN.username, displayName: ADMIN.displayName, facility: "so-y-te" });
+    assert.deepEqual(await response.json(), {
+      username: ADMIN.username,
+      displayName: ADMIN.displayName,
+      facility: "so-y-te",
+      groups: [`/so-y-te/${BOARD_GROUP}`],
+      canPublish: true,
+    });
   });
   await withServer(deps({ units: ["tram-y-te", "so-y-te"], groups: [], preferredUsername: null }), async base => {
     const response = await get(base, "/api/me?unit=tram-y-te");
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { username: ADMIN.username, displayName: ADMIN.username, facility: "tram-y-te" });
+    assert.deepEqual(await response.json(), { username: ADMIN.username, displayName: ADMIN.username, facility: "tram-y-te", groups: [], canPublish: false });
     assert.equal((await get(base, "/api/me")).status, 403, "several units without an explicit choice fail closed");
     assert.equal((await get(base, "/api/me?unit=benh-vien")).status, 403, "selection outside the verified membership");
     assert.equal((await get(base, "/api/me?unit=Ban_Dieu_Hanh")).status, 400);

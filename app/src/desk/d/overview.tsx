@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, Card, formatNumber, StatCard } from "@junctura/health-ui";
+import { Badge, Button, Card, formatNumber, StatCard } from "@junctura/ui";
 import { useDesk } from "../context";
-import { isMedicalKey, workflowFor, type ExecutionItem, type ExecutionList, type WorkflowSummary } from "../data";
+import { isPackKey, type ExecutionItem, type ExecutionList, type WorkflowSummary } from "../data";
 import { DeskPage } from "../layout";
 import { DeskError, DeskLoading } from "../states";
-import { deskStrings as s, facilityLabel } from "../strings";
+import { labelOf, usePack, workflowKeys } from "../../pack/data";
+import { deskStrings as s } from "../strings";
 import { dataStrings as d } from "./strings";
 import {
   durationStatsByWorkflow,
@@ -42,6 +43,8 @@ const WaitingBar = ({ total, share, overdue }: { total: number; share: number; o
  */
 export function DataOverviewPage() {
   const { api } = useDesk();
+  const pack = usePack();
+  const label = labelOf(pack);
   const [summary, setSummary] = useState<WorkflowSummary | null>(null);
   const [stats, setStats] = useState<AppStats | null>(null);
   const [running, setRunning] = useState<readonly ExecutionItem[] | null>(null);
@@ -86,8 +89,8 @@ export function DataOverviewPage() {
 
   const waiting = waitingByFacility(running);
   const busiest = Math.max(1, ...waiting.map(entry => entry.total));
-  const durations = durationStatsByWorkflow(completed);
-  const definitions = summary.definitions.filter(definition => isMedicalKey(definition.key));
+  const durations = durationStatsByWorkflow(completed, pack == null ? [] : [...workflowKeys(pack)]);
+  const definitions = summary.definitions.filter(definition => isPackKey(pack, definition.key));
 
   return (
     <DeskPage title={d.overview.title} lead={d.overview.lead} current="/dieu-hanh">
@@ -120,7 +123,7 @@ export function DataOverviewPage() {
             <ul className="mt-3 space-y-3">
               {waiting.map(entry => (
                 <li key={entry.facility} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                  <span className="text-sm font-medium">{facilityLabel(entry.facility)}</span>
+                  <span className="text-sm font-medium">{label(entry.facility)}</span>
                   <WaitingBar total={entry.total} share={entry.total / busiest} overdue={entry.overdue} />
                 </li>
               ))}
@@ -136,7 +139,7 @@ export function DataOverviewPage() {
             <ul className="mt-3 divide-y divide-line">
               {durations.map(entry => (
                 <li key={entry.key} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
-                  <span className="font-medium">{workflowFor(entry.key)?.name ?? entry.key}</span>
+                  <span className="font-medium">{pack?.workflows.find(workflow => workflow.id === entry.key)?.name ?? entry.key}</span>
                   <span className="text-sm text-ink-2">
                     {d.overview.median}: {formatDuration(entry.median ?? Number.NaN)}
                     {" · "}
@@ -180,7 +183,7 @@ export function DataOverviewPage() {
                           {definition.steps.map((step, index) => (
                             <li key={`${definition.key}-${index}`}>
                               {step.name}
-                              {step.owner && <span className="text-muted"> — {facilityLabel(step.owner)}</span>}
+                              {step.owner && <span className="text-muted"> — {label(step.owner)}</span>}
                             </li>
                           ))}
                         </ol>
@@ -188,7 +191,7 @@ export function DataOverviewPage() {
                     </td>
                     <td className="px-4 py-3 text-ink-2">
                       {[...new Set(definition.steps.map(step => step.owner).filter((owner): owner is string => owner != null))]
-                        .map(facilityLabel).join(", ") || "—"}
+                        .map(label).join(", ") || "—"}
                     </td>
                   </tr>
                 ))}

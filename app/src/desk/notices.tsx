@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Button, Card, TextField, TextAreaField, formatDateTime } from "@junctura/health-ui";
+import { Button, Card, TextField, TextAreaField, formatDateTime } from "@junctura/ui";
 import { isDeskApiError, useDesk } from "./context";
 import type { Notice, NoticeList } from "./data";
 import { DeskPage } from "./layout";
 import { DeskEmpty, DeskError, DeskLoading } from "./states";
-import { deskStrings as s, facilityLabel } from "./strings";
+import { labelOf, usePack } from "../pack/data";
+import { deskStrings as s } from "./strings";
 
 /**
- * H · Bảng tin: the notices of the health department for all participating facilities.
- * Only the health department sees the form to publish a notice; everyone else reads.
+ * H · Bảng tin: the notices of the coordinating unit for all participating units.
+ * Only the accounts with the verified publication right see the form; everyone else reads.
  */
 export function NoticesPage() {
   const { api, staff } = useDesk();
+  const label = labelOf(usePack());
   const [notices, setNotices] = useState<readonly Notice[] | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -29,7 +31,7 @@ export function NoticesPage() {
 
   return (
     <DeskPage title={s.notices.title} lead={s.notices.lead} current="/lam-viec/bang-tin">
-      {staff.facility === "so-y-te" && <NoticeForm onPosted={() => void load()} />}
+      {staff.canPublish && <NoticeForm onPosted={() => void load()} />}
       {error ? (
         <div className="mt-8"><DeskError error={error} onRetry={() => void load()} /></div>
       ) : notices === null ? (
@@ -46,7 +48,7 @@ export function NoticesPage() {
               </div>
               <p className="mt-1 whitespace-pre-line text-sm text-ink-2">{notice.body}</p>
               <p className="mt-2 text-xs text-muted">
-                {notice.author.displayName} · {facilityLabel(notice.author.facility)}
+                {notice.author.displayName} · {label(notice.author.facility)}
               </p>
             </li>
           ))}
@@ -56,7 +58,7 @@ export function NoticesPage() {
   );
 }
 
-/** The publish form; rendered only for the health department. */
+/** The publish form; rendered only for the accounts with the publication right. */
 function NoticeForm({ onPosted }: { onPosted: () => void }) {
   const { api } = useDesk();
   const [title, setTitle] = useState("");

@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ReactElement } from "react";
 import {
-  DeskProvider,
   DirectoryPage,
   NoticesPage,
   TodayPage,
   type DeskApi,
-  type DeskStaff,
 } from "../src/desk";
 import { deskStrings as s } from "../src/desk/strings";
+import { EDUCATION_PACK, EDUCATION_OFFICER, COORDINATOR, renderDeskPack, staffOf } from "./helpers";
 
 afterEach(() => { window.location.hash = ""; });
 
@@ -37,19 +36,13 @@ const makeApi = (get: (path: string) => unknown): { api: DeskApi; gets: string[]
   };
 };
 
-const staffOf = (facility: DeskStaff["facility"]): DeskStaff => ({
-  username: `nv-${facility}`,
-  displayName: "Nguyễn Văn A",
-  facility,
-});
-
-const renderDesk = (page: ReactElement, facility: DeskStaff["facility"], api: DeskApi) =>
-  render(<DeskProvider staff={staffOf(facility)} api={api} signOut={() => {}}>{page}</DeskProvider>);
+const renderDesk = (page: ReactElement, staff: ReturnType<typeof staffOf>, api: DeskApi) =>
+  renderDeskPack(EDUCATION_PACK, staff, page, api);
 
 // ---------------------------------------------------------------- fixtures
 
-const STEP_TRAM = "Tiếp nhận ở Trạm y tế";
-const STEP_BENH_VIEN = "Bác sĩ bệnh viện duyệt";
+const STEP_VAN_THU = "Tiếp nhận hồ sơ";
+const STEP_LANH_DAO = "Xét duyệt chuyển trường";
 
 const buildExecution = (fixture: {
   id: string;
@@ -58,13 +51,12 @@ const buildExecution = (fixture: {
   name?: string;
   groups?: string[];
   stepName?: string | null;
-  openedBy?: string;
 }) => ({
   id: fixture.id,
   definition: {
-    id: fixture.key ?? "junctura_chuyen_tuyen",
-    key: fixture.key ?? "junctura_chuyen_tuyen",
-    name: fixture.name ?? "Chuyển tuyến khám chữa bệnh",
+    id: fixture.key ?? "chuyentruong",
+    key: fixture.key ?? "chuyentruong",
+    name: fixture.name ?? "Chuyển trường",
     version: 1,
   },
   status: "running" as const,
@@ -72,36 +64,35 @@ const buildExecution = (fixture: {
   updatedAt: "2026-11-18T09:00:00Z",
   title: fixture.title,
   currentStep: fixture.stepName === null ? null : {
-    name: fixture.stepName ?? STEP_TRAM,
+    name: fixture.stepName ?? STEP_VAN_THU,
     assignee: null,
-    groups: fixture.groups ?? ["tram-y-te"],
+    groups: fixture.groups ?? ["van-thu"],
   },
 });
 
-const WAITING_TRAM = buildExecution({ id: "11111111-1111-4111-8111-111111111111", title: "CT-100001" });
-const WAITING_BENH_VIEN = buildExecution({ id: "22222222-2222-4222-8222-222222222222", title: "CT-100002", stepName: STEP_BENH_VIEN, groups: ["benh-vien"] });
-const OPENED_BY_TRAM = buildExecution({ id: "33333333-3333-4333-8333-333333333333", title: "CT-100003", stepName: STEP_BENH_VIEN, groups: ["benh-vien"] });
+const WAITING_VAN_THU = buildExecution({ id: "11111111-1111-4111-8111-111111111111", title: "CH-100001" });
+const WAITING_LANH_DAO = buildExecution({ id: "22222222-2222-4222-8222-222222222222", title: "CH-100002", stepName: STEP_LANH_DAO, groups: ["lanh-dao"] });
+const OPENED_BY_UNIT = buildExecution({ id: "33333333-3333-4333-8333-333333333333", title: "CH-100003", stepName: STEP_LANH_DAO, groups: ["lanh-dao"] });
 
-/** Which case was opened by which facility, as the engine detail records carry it. */
+/** Which case was opened by which unit, as the engine detail records carry it. */
 const OPENED_BY: Readonly<Record<string, string>> = {
-  [OPENED_BY_TRAM.id]: "tram-y-te",
-  [WAITING_TRAM.id]: "nha-thuoc",
+  [OPENED_BY_UNIT.id]: "truong",
+  [WAITING_VAN_THU.id]: "phong-giao-duc",
 };
 
 const DEFINITIONS = {
   items: [
-    { id: "def-ct", key: "junctura_chuyen_tuyen", version: 2, name: "Chuyển tuyến khám chữa bệnh" },
-    { id: "def-dt", key: "junctura_xac_minh_don_thuoc", version: 1, name: "Xác minh đơn thuốc" },
-    { id: "def-cp", key: "junctura_xac_minh_chi_phi", version: 3, name: "Xác minh chi phí" },
+    { id: "def-ct", key: "chuyentruong", version: 2, name: "Chuyển trường" },
+    { id: "def-hb", key: "capbansaohocba", version: 1, name: "Cấp bản sao học bạ" },
   ],
 };
 
 const NOTICES = {
   items: [
-    { id: "n1", title: "Tin một", body: "Nội dung tin một.", author: { displayName: "Sở Y tế", facility: "so-y-te" }, createdAt: "2026-11-18T08:00:00Z" },
-    { id: "n2", title: "Tin hai", body: "Nội dung tin hai.", author: { displayName: "Sở Y tế", facility: "so-y-te" }, createdAt: "2026-11-18T07:00:00Z" },
-    { id: "n3", title: "Tin ba", body: "Nội dung tin ba.", author: { displayName: "Sở Y tế", facility: "so-y-te" }, createdAt: "2026-11-18T06:00:00Z" },
-    { id: "n4", title: "Tin bốn", body: "Nội dung tin bốn.", author: { displayName: "Sở Y tế", facility: "so-y-te" }, createdAt: "2026-11-18T05:00:00Z" },
+    { id: "n1", title: "Tin một", body: "Nội dung tin một.", author: { displayName: "Phòng Giáo dục", facility: "phong-giao-duc" }, createdAt: "2026-11-18T08:00:00Z" },
+    { id: "n2", title: "Tin hai", body: "Nội dung tin hai.", author: { displayName: "Phòng Giáo dục", facility: "phong-giao-duc" }, createdAt: "2026-11-18T07:00:00Z" },
+    { id: "n3", title: "Tin ba", body: "Nội dung tin ba.", author: { displayName: "Phòng Giáo dục", facility: "phong-giao-duc" }, createdAt: "2026-11-18T06:00:00Z" },
+    { id: "n4", title: "Tin bốn", body: "Nội dung tin bốn.", author: { displayName: "Phòng Giáo dục", facility: "phong-giao-duc" }, createdAt: "2026-11-18T05:00:00Z" },
   ],
 };
 
@@ -140,36 +131,36 @@ describe("today page", () => {
       return {};
     });
 
-  it("greets the staff by name and facility and fetches today's feeds", async () => {
-    const api = todayApi({ items: [WAITING_TRAM] });
-    const view = renderDesk(<TodayPage />, "tram-y-te", api.api);
+  it("greets the staff by name and unit and fetches today's feeds", async () => {
+    const api = todayApi({ items: [WAITING_VAN_THU] });
+    const view = renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
     expect(api.gets[0]).toBe("/v1/workflows/executions?limit=100&status=running");
     await screen.findByText(s.today.waitingMine);
     expect(view.container.textContent).toContain(s.today.greeting);
     expect(view.container.textContent).toContain("Nguyễn Văn A");
-    expect(view.container.textContent).toContain("Trạm y tế");
+    expect(view.container.textContent).toContain("Trường học");
   });
 
-  it("lists only the running cases waiting at the staff facility", async () => {
-    const api = todayApi({ items: [WAITING_TRAM, WAITING_BENH_VIEN] });
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100001");
-    expect(screen.getByText(STEP_TRAM)).toBeTruthy();
-    expect(screen.queryByText("CT-100002")).toBeNull();
+  it("lists only the running cases waiting at the staff's groups", async () => {
+    const api = todayApi({ items: [WAITING_VAN_THU, WAITING_LANH_DAO] });
+    renderDesk(<TodayPage />, staffOf("truong", ["/truong/hoc-vu", "/truong/van-thu"]), api.api);
+    await screen.findByText("CH-100001");
+    expect(screen.getByText(STEP_VAN_THU)).toBeTruthy();
+    expect(screen.queryByText("CH-100002")).toBeNull();
   });
 
-  it("lists the running cases the facility itself opened, read from each case input", async () => {
-    const api = todayApi({ items: [WAITING_BENH_VIEN, OPENED_BY_TRAM] });
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100003");
+  it("lists the running cases the unit itself opened, read from each case input", async () => {
+    const api = todayApi({ items: [WAITING_LANH_DAO, OPENED_BY_UNIT] });
+    renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
+    await screen.findByText("CH-100003");
     const detailPaths = api.gets.filter(path => path.startsWith("/v1/workflows/executions/"));
     expect(detailPaths).toHaveLength(2);
-    expect(screen.queryByText("CT-100002")).toBeNull();
+    expect(screen.queryByText("CH-100002")).toBeNull();
   });
 
   it("shows the three latest notices of the bulletin board", async () => {
     const api = todayApi({ items: [] });
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
+    renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText("Tin một");
     expect(screen.getByText("Tin hai")).toBeTruthy();
     expect(screen.getByText("Tin ba")).toBeTruthy();
@@ -177,37 +168,37 @@ describe("today page", () => {
     expect(screen.getByRole("link", { name: `${s.today.allNotices} →` }).getAttribute("href")).toBe("#/lam-viec/bang-tin");
   });
 
-  it("shows the open-case shortcut only when the facility may open some workflow", async () => {
+  it("shows the open-case shortcut when the staff's groups may open a deployed workflow", async () => {
     const api = todayApi({ items: [] });
-    renderDesk(<TodayPage />, "nha-thuoc", api.api);
+    renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText("Tin một");
     expect(screen.getByRole("link", { name: `${s.today.openCase} →` }).getAttribute("href")).toBe("#/ho-so/mo");
   });
 
-  it("hides the open-case shortcut for facilities that open nothing", async () => {
+  it("hides the open-case shortcut when no pack workflow is openable", async () => {
     const api = todayApi({ items: [] });
-    renderDesk(<TodayPage />, "so-y-te", api.api);
+    renderDesk(<TodayPage />, COORDINATOR, api.api);
     await screen.findByText("Tin một");
     expect(screen.queryByRole("link", { name: `${s.today.openCase} →` })).toBeNull();
   });
 
   it("links the waiting cases to the moved detail route", async () => {
-    const api = todayApi({ items: [WAITING_TRAM] });
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
-    await screen.findByText("CT-100001");
-    expect(screen.getByRole("link", { name: "CT-100001" }).getAttribute("href")).toBe("#/ho-so/11111111-1111-4111-8111-111111111111");
+    const api = todayApi({ items: [WAITING_VAN_THU] });
+    renderDesk(<TodayPage />, staffOf("truong", ["/truong/hoc-vu", "/truong/van-thu"]), api.api);
+    await screen.findByText("CH-100001");
+    expect(screen.getByRole("link", { name: "CH-100001" }).getAttribute("href")).toBe("#/ho-so/11111111-1111-4111-8111-111111111111");
   });
 
   it("renders the 403 message as plain Vietnamese", async () => {
     const api = todayApi(failure(403, "permission_required"));
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
+    renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText(s.errors.forbiddenTitle);
     expect(screen.getByText(s.errors.forbidden)).toBeTruthy();
   });
 
   it("renders the network failure with a working retry action", async () => {
     const api = makeApi(() => { throw new TypeError("fetch failed"); });
-    renderDesk(<TodayPage />, "tram-y-te", api.api);
+    renderDesk(<TodayPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText(s.errors.networkTitle);
     fireEvent.click(screen.getByRole("button", { name: s.errors.retry }));
     await waitFor(() => expect(api.gets.length).toBeGreaterThan(4));
@@ -217,22 +208,22 @@ describe("today page", () => {
 // ---------------------------------------------------------------- H · Bảng tin
 
 describe("notices page", () => {
-  it("lists the notices from the gateway for every facility", async () => {
+  it("lists the notices from the gateway for every unit", async () => {
     const api = makeApi(() => NOTICES);
-    const view = renderDesk(<NoticesPage />, "tram-y-te", api.api);
+    const view = renderDesk(<NoticesPage />, EDUCATION_OFFICER, api.api);
     expect(api.gets).toEqual(["/api/bang-tin"]);
     await screen.findByText("Tin một");
     expect(screen.getByText("Tin bốn")).toBeTruthy();
     expect(screen.getByText("Nội dung tin hai.")).toBeTruthy();
-    expect(view.container.textContent).toContain("Sở Y tế");
+    expect(view.container.textContent).toContain("Phòng Giáo dục");
   });
 
-  it("shows the publish form only to the health department", async () => {
-    for (const facility of ["tram-y-te", "so-y-te"] as const) {
+  it("shows the publish form only to the accounts with the verified publication right", async () => {
+    for (const staff of [EDUCATION_OFFICER, COORDINATOR]) {
       const api = makeApi(() => NOTICES);
-      const { unmount } = renderDesk(<NoticesPage />, facility, api.api);
+      const { unmount } = renderDesk(<NoticesPage />, staff, api.api);
       await screen.findByText("Tin một");
-      if (facility === "so-y-te") {
+      if (staff.canPublish) {
         expect(screen.getByText(s.notices.formTitle)).toBeTruthy();
         expect(screen.getByRole("button", { name: s.notices.submit })).toBeTruthy();
       } else {
@@ -259,7 +250,7 @@ describe("notices page", () => {
       getBlob: async (): Promise<Blob> => { throw new Error("not used here"); },
       postBytes: async <T,>(): Promise<T> => { throw new Error("not used here"); },
     };
-    renderDesk(<NoticesPage />, "so-y-te", api);
+    renderDesk(<NoticesPage />, COORDINATOR, api);
     await screen.findByText(s.notices.formTitle);
     fireEvent.change(screen.getByLabelText(s.notices.titleLabel), { target: { value: "Tin mới" } });
     fireEvent.change(screen.getByLabelText(s.notices.bodyLabel), { target: { value: "Nội dung." } });
@@ -280,7 +271,7 @@ describe("notices page", () => {
       getBlob: async (): Promise<Blob> => { throw new Error("not used here"); },
       postBytes: async <T,>(): Promise<T> => { throw new Error("not used here"); },
     };
-    renderDesk(<NoticesPage />, "so-y-te", api);
+    renderDesk(<NoticesPage />, COORDINATOR, api);
     await screen.findByText(s.notices.formTitle);
     fireEvent.change(screen.getByLabelText(s.notices.titleLabel), { target: { value: "" } });
     fireEvent.change(screen.getByLabelText(s.notices.bodyLabel), { target: { value: "Nội dung." } });
@@ -296,7 +287,7 @@ describe("notices page", () => {
       getBlob: async (): Promise<Blob> => { throw new Error("not used here"); },
       postBytes: async <T,>(): Promise<T> => { throw new Error("not used here"); },
     };
-    renderDesk(<NoticesPage />, "so-y-te", api);
+    renderDesk(<NoticesPage />, COORDINATOR, api);
     await screen.findByText(s.notices.formTitle);
     fireEvent.change(screen.getByLabelText(s.notices.titleLabel), { target: { value: "Tin mới" } });
     fireEvent.change(screen.getByLabelText(s.notices.bodyLabel), { target: { value: "Nội dung." } });
@@ -304,9 +295,9 @@ describe("notices page", () => {
     await screen.findByText(s.notices.publishForbidden);
   });
 
-  it("renders the 403 message for other facilities on a refusing gateway", async () => {
+  it("renders the 403 message for other units on a refusing gateway", async () => {
     const api = makeApi(() => failure(403, null));
-    renderDesk(<NoticesPage />, "tram-y-te", api.api);
+    renderDesk(<NoticesPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText(s.errors.forbidden);
   });
 });
@@ -316,7 +307,7 @@ describe("notices page", () => {
 describe("directory page", () => {
   it("reads both directory feeds of Layer 1", async () => {
     const api = makeApi(path => (path.includes("organizations") ? DIR_ORGS : DIR_PEOPLE));
-    renderDesk(<DirectoryPage />, "tram-y-te", api.api);
+    renderDesk(<DirectoryPage />, EDUCATION_OFFICER, api.api);
     expect(api.gets).toEqual(["/v1/directory/organizations", "/v1/directory/principals"]);
     await screen.findByText("Junctura");
     expect(screen.getAllByText("Clinic").length).toBeGreaterThan(0);
@@ -325,7 +316,7 @@ describe("directory page", () => {
 
   it("never exposes subject, issuer or permissions", async () => {
     const api = makeApi(path => (path.includes("organizations") ? DIR_ORGS : DIR_PEOPLE));
-    renderDesk(<DirectoryPage />, "tram-y-te", api.api);
+    renderDesk(<DirectoryPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText("Trần Bệnh Viện");
     expect(screen.queryByText("subject-1")).toBeNull();
     expect(screen.queryByText("issuer-1")).toBeNull();
@@ -335,7 +326,7 @@ describe("directory page", () => {
 
   it("groups the people by organization with job title and kind", async () => {
     const api = makeApi(path => (path.includes("organizations") ? DIR_ORGS : DIR_PEOPLE));
-    renderDesk(<DirectoryPage />, "tram-y-te", api.api);
+    renderDesk(<DirectoryPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText("Trần Bệnh Viện");
     expect(screen.getByText("Bệnh viện Junctura")).toBeTruthy();
     const person = screen.getByText("Trần Bệnh Viện").closest("li")!;
@@ -350,7 +341,7 @@ describe("directory page", () => {
 
   it("filters people and organizations by name", async () => {
     const api = makeApi(path => (path.includes("organizations") ? DIR_ORGS : DIR_PEOPLE));
-    renderDesk(<DirectoryPage />, "tram-y-te", api.api);
+    renderDesk(<DirectoryPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText("Trần Bệnh Viện");
     fireEvent.change(screen.getByLabelText(s.directory.filterLabel), { target: { value: "trạm" } });
     await waitFor(() => expect(screen.queryByText("Trần Bệnh Viện")).toBeNull());
@@ -360,7 +351,7 @@ describe("directory page", () => {
 
   it("renders the 403 message when the directory refuses", async () => {
     const api = makeApi(() => failure(403, null));
-    renderDesk(<DirectoryPage />, "tram-y-te", api.api);
+    renderDesk(<DirectoryPage />, EDUCATION_OFFICER, api.api);
     await screen.findByText(s.errors.forbidden);
   });
 });

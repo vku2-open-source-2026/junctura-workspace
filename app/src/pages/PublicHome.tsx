@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-import { Badge, JuncturaMark, PublicControls } from "@junctura/health-ui";
-import { appName, appNames, catalog } from "../catalog";
-import { purposeLabel, strings } from "../strings";
+import { Badge, ErrorState, JuncturaMark, PublicControls, Skeleton } from "@junctura/ui";
+import { recordTypeCatalog } from "../catalog";
+import { usePackState } from "../pack/data";
+import { strings } from "../strings";
 import { SPACE_ROUTES } from "../space";
 
 function SectionHeading({ id, title, lead }: { id: string; title: string; lead?: string }) {
@@ -14,8 +15,9 @@ function SectionHeading({ id, title, lead }: { id: string; title: string; lead?:
   );
 }
 
-/** Public landing page of the portal: what Layer 2 is, the shared contracts and workflows, who takes part, and the way into the signed-in workspace. */
+/** Public landing page of the portal: what Layer 2 is, the case types of the installed pack, who takes part, and the way into the signed-in workspace. */
 export function PublicHome() {
+  const { pack, failed } = usePackState();
   return (
     <div className="min-h-dvh bg-app text-ink">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
@@ -88,38 +90,41 @@ export function PublicHome() {
         <section aria-labelledby="portal-catalog-h" className="border-t border-line">
           <div className="mx-auto max-w-6xl px-5 py-16">
             <SectionHeading id="portal-catalog-h" title={strings.landing.catalogTitle} lead={strings.landing.catalogLead} />
-            <ul className="mt-10 grid gap-5 sm:grid-cols-2">
-              {catalog.map(entry => (
-                <li key={entry.slug} className="rounded-lg border border-line bg-surface p-5 shadow-card">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-lg font-semibold"><a href={`#/hop-dong/${entry.slug}`} className="hover:underline">{entry.title}</a></h3>
-                    <Badge tone="brand">{strings.catalog.version} {entry.version}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-ink-2">{entry.description}</p>
-                  <dl className="mt-4 space-y-1.5 text-sm">
-                    <div><dt className="inline font-medium">{strings.catalog.provider}: </dt><dd className="inline">{appName(entry.provider)}</dd></div>
-                    <div><dt className="inline font-medium">{strings.catalog.consumers}: </dt><dd className="inline">{entry.consumers.map(appName).join(", ")}</dd></div>
-                    <div><dt className="inline font-medium">{strings.catalog.purposes}: </dt><dd className="inline">{entry.purposes.map(purposeLabel).join(", ")}</dd></div>
-                  </dl>
-                  <p className="mt-3">
-                    <Badge tone={entry.emergencyAccess ? "warn" : "neutral"}>
-                      {entry.emergencyAccess ? strings.catalog.emergency : strings.catalog.noEmergency}
-                    </Badge>
-                  </p>
-                </li>
-              ))}
-            </ul>
+            {failed ? (
+              <ErrorState title={strings.landing.packFailedTitle} onRetry={() => window.location.reload()}>
+                {strings.landing.packFailed}
+              </ErrorState>
+            ) : !pack ? (
+              <Skeleton lines={4} className="mt-10 max-w-2xl" />
+            ) : (
+              <ul className="mt-10 grid gap-5 sm:grid-cols-2">
+                {recordTypeCatalog(pack).map(entry => (
+                  <li key={entry.id} className="rounded-lg border border-line bg-surface p-5 shadow-card">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-lg font-semibold"><a href={`#/hop-dong/${entry.id}`} className="hover:underline">{entry.name}</a></h3>
+                      <Badge tone="brand">{entry.workflowCount} {strings.catalog.workflowCount}</Badge>
+                    </div>
+                    {entry.description && <p className="mt-2 text-sm text-ink-2">{entry.description}</p>}
+                    <p className="mt-3 text-sm font-medium text-brand">{strings.catalog.openDetail} →</p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 
         <section aria-labelledby="portal-facility-h" className="border-t border-line bg-surface/60">
           <div className="mx-auto max-w-6xl px-5 py-16">
             <SectionHeading id="portal-facility-h" title={strings.landing.facilityTitle} lead={strings.landing.facilityLead} />
-            <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {[...appNames.values()].map(name => (
-                <li key={name} className="rounded-lg border border-line bg-surface px-4 py-3 text-sm font-medium shadow-card">{name}</li>
-              ))}
-            </ul>
+            {failed ? null : !pack ? (
+              <Skeleton lines={2} className="mt-8 max-w-2xl" />
+            ) : (
+              <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {pack.unitTypes.map(unitType => (
+                  <li key={unitType.id} className="rounded-lg border border-line bg-surface px-4 py-3 text-sm font-medium shadow-card">{unitType.name}</li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 

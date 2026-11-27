@@ -15,7 +15,8 @@ Repo đang có hai lớp API `/api` cần phân biệt:
 
 | Route cổng hiện có | Ý nghĩa |
 | --- | --- |
-| `GET /api/me` | Danh tính đã xác minh của người gọi (DX-OS `GET /v1/identity` bằng bearer người dùng; đơn vị là tư cách thành viên đã xác minh) |
+| `GET /api/pack` | **Công khai, chỉ đọc**: phép chiếu trắng danh sách của gói đã cài (nhãn, loại hồ sơ, nhóm, loại đơn vị, biểu mẫu, hạn, sơ đồ nút–cạnh). Xem ranh giới công khai/không công khai trong [PORTAL.md](PORTAL.md). |
+| `GET /api/me` | Danh tính đã xác minh của người gọi (DX-OS `GET /v1/identity` bằng bearer người dùng; đơn vị là tư cách thành viên đã xác minh, kèm nhóm đã xác minh và quyền đăng bảng tin) |
 | `GET`/`POST` `/api/bang-tin` | Bảng tin phối hợp; đăng chỉ với tư cách thành viên `so-y-te` kèm nhóm đã xác minh `/so-y-te/ban-tin` |
 | `GET`/`POST` `/api/ho-so/{executionId}/ghi-chu` | Ghi chú trên hồ sơ |
 | `GET`/`POST` `/api/ho-so/{executionId}/tep` | Tệp đính kèm trên hồ sơ |

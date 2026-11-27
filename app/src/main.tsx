@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { DisplayPrefsProvider } from "@junctura/health-ui";
+import { DisplayPrefsProvider } from "@junctura/ui";
 import { PortalApp } from "./App";
 import "./index.css";
 

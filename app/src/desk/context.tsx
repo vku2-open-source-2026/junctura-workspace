@@ -3,14 +3,19 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-/** Facilities of the shared medical space; `so-y-te` is the coordinating authority. */
-export type Facility = "tram-y-te" | "benh-vien" | "nha-thuoc" | "bao-hiem" | "so-y-te";
-
-/** The signed-in desk staff member; patients never sign in to the desk. */
+/**
+ * The signed-in desk staff member, as `GET /api/me` resolved it from the
+ * verified Directory membership: the unit they work for, the group paths their
+ * membership carries, and whether they may publish to the bulletin board.
+ * There is no client-side unit vocabulary — labels of units and role groups
+ * come from the pack, and the ids are whatever the Directory verifies.
+ */
 export interface DeskStaff {
   username: string;
   displayName: string;
-  facility: Facility;
+  facility: string;
+  groups: readonly string[];
+  canPublish: boolean;
 }
 
 /** Thin transport for the space pages; wiring lives in the app shell, not here. */

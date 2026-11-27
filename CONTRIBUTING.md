@@ -10,7 +10,7 @@ Cảm ơn bạn quan tâm đến Junctura Workspace. Tài liệu này mô tả c
 - Node 24, đúng phiên bản đã ghim trong `.node-version`.
 - Docker với Compose, dùng để kiểm tra `compose.yaml`.
 - Python có sẵn `pip` để cài công cụ `reuse` (xem `requirements-reuse.txt`).
-- Để chạy cổng đầy đủ (giao diện, backend, dữ liệu mẫu của Junctura Health), làm theo [docs/PORTAL.md](docs/PORTAL.md). Repo Junctura Health được checkout vào `.junctura-health/` ở đúng phiên bản ghi trong `.junctura-health-version`.
+- Cổng build và chạy được chỉ từ kho này (gói ngành đến từ `GET /api/pack` của backend); xem [docs/PORTAL.md](docs/PORTAL.md). Checkout Junctura Health ở `.junctura-health/` (phiên bản ghi trong `.junctura-health-version`) chỉ cần cho kiểm tra gói Y tế ghim của CI, không cần để build hay chạy cổng.
 
 ## Chạy các kiểm tra
 
@@ -23,13 +23,13 @@ Các lệnh dưới đây khớp với workflow `Checks` trong `.github/workflow
 | `npm --prefix server ci` | Cài phụ thuộc backend |
 | `npm --prefix server test` | Chạy kiểm thử backend |
 | `node scripts/check-health-pack.mjs` | Kiểm gói Y tế thật trong checkout Junctura Health ghim (cần `.junctura-health/`) |
-| `npm --prefix .junctura-health/ui ci` | Cài phụ thuộc shared UI của Junctura Health (cần `.junctura-health/`) |
+| `npm --prefix packages/ui ci` | Cài phụ thuộc giao diện dùng chung của kho |
 | `npm --prefix app ci` | Cài phụ thuộc frontend |
 | `npm --prefix app run typecheck` | Kiểm tra kiểu frontend |
 | `npm --prefix app test` | Chạy kiểm thử frontend |
 | `npm --prefix app run build` | Build frontend |
 
-Trên GitHub, CI tự checkout Junctura Health ở phiên bản ghim trong `.junctura-health-version` (kèm cả `pack/`) và kiểm gói Y tế thật bằng lệnh trên. Khi chạy cục bộ, hãy chuẩn bị `.junctura-health/` theo [docs/PORTAL.md](docs/PORTAL.md) trước khi chạy các lệnh frontend.
+Trên GitHub, CI checkout Junctura Health ở phiên bản ghim trong `.junctura-health-version` (chỉ `pack/`) và kiểm gói Y tế thật bằng lệnh trên; frontend và backend không dùng checkout này. Khi chạy cục bộ, các lệnh frontend chạy được không cần `.junctura-health/`.
 
 ## Mở issue
 

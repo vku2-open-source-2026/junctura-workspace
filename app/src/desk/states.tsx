@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { EmptyState, ErrorState, Skeleton } from "@junctura/health-ui";
+import { EmptyState, ErrorState, Skeleton } from "@junctura/ui";
 import { deskStrings as s } from "./strings";
 import { isDeskApiError } from "./context";
 

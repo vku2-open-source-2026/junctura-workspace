@@ -1,8 +1,8 @@
 {
-  "name": "junctura-health-portal-server",
+  "name": "junctura-workspace-portal-server",
   "version": "0.1.0",
   "private": true,
-  "description": "Backend của Cổng Junctura Health: lưu bảng tin, ghi chú và tệp đính kèm của hồ sơ liên thông qua Tầng 1 (Junctura DX-OS) cho giao diện Cổng.",
+  "description": "Backend của Cổng Junctura Workspace: phục vụ phép chiếu công khai của gói đã cài, lưu bảng tin, ghi chú và tệp đính kèm của hồ sơ liên thông qua Tầng 1 (Junctura DX-OS).",
   "license": "Apache-2.0",
   "type": "module",
   "homepage": "https://github.com/vku2-open-source-2026/junctura-workspace/tree/main/server",
