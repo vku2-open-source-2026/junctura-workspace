@@ -1,11 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/education">
-  <process id="cap-ban-sao-hoc-ba" isExecutable="true">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             targetNamespace="https://junctura.studio/workspace/education">
+  <process id="capbansaohocba" name="Cấp bản sao học bạ" isExecutable="true">
     <startEvent id="start" name="Yêu cầu cấp bản sao học bạ" />
-    <userTask id="tiep-nhan-yeu-cau" name="Tiếp nhận yêu cầu" />
-    <userTask id="cap-ban-sao" name="Cấp bản sao học bạ" />
-    <endEvent id="end" name="Hoàn tất" />
+    <sequenceFlow id="f-mo-ho-so" sourceRef="start" targetRef="tiep-nhan-yeu-cau" />
+    <userTask id="tiep-nhan-yeu-cau" name="Tiếp nhận yêu cầu" flowable:candidateGroups="hoc-vu">
+      <documentation>Bước 1, nhóm hoc-vu ở trường. Hạn xử lý: 2 ngày lịch kể từ khi bước mở (deadlineDays=2, UTC).</documentation>
+    </userTask>
+    <sequenceFlow id="f-tiep-nhan-quyet-dinh" sourceRef="tiep-nhan-yeu-cau" targetRef="quyet-dinh-tiep-nhan" />
+    <exclusiveGateway id="quyet-dinh-tiep-nhan" name="Kết quả tiếp nhận yêu cầu" />
+    <sequenceFlow id="f-tiep-nhan-cap" sourceRef="quyet-dinh-tiep-nhan" targetRef="cap-ban-sao">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'tiep-nhan'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f-tiep-nhan-tu-choi" sourceRef="quyet-dinh-tiep-nhan" targetRef="end-tu-choi">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'tu-choi'}</conditionExpression>
+    </sequenceFlow>
+    <userTask id="cap-ban-sao" name="Cấp bản sao học bạ" flowable:candidateGroups="lanh-dao">
+      <documentation>Bước 2, nhóm lanh-dao ở trường. Hạn xử lý: 5 ngày lịch kể từ khi bước mở (deadlineDays=5, UTC).</documentation>
+    </userTask>
+    <sequenceFlow id="f-cap-quyet-dinh" sourceRef="cap-ban-sao" targetRef="quyet-dinh-cap" />
+    <exclusiveGateway id="quyet-dinh-cap" name="Kết quả cấp bản sao" />
+    <sequenceFlow id="f-cap-hoan-tat" sourceRef="quyet-dinh-cap" targetRef="end">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'dong-y-cap'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f-cap-bo-sung" sourceRef="quyet-dinh-cap" targetRef="tiep-nhan-yeu-cau">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'yeu-cau-bo-sung'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f-cap-tu-choi" sourceRef="quyet-dinh-cap" targetRef="end-tu-choi-cap">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'tu-choi-cap'}</conditionExpression>
+    </sequenceFlow>
+    <endEvent id="end" name="Hoàn tất cấp bản sao" />
+    <endEvent id="end-tu-choi" name="Từ chối yêu cầu" />
+    <endEvent id="end-tu-choi-cap" name="Từ chối cấp bản sao" />
   </process>
 </definitions>

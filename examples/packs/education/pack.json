@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "education",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Gói Giáo dục",
   "description": "Gói mẫu cho ngành giáo dục: hồ sơ chuyển trường và cấp bản sao học bạ giữa phòng giáo dục và các trường. Toàn bộ dữ liệu chỉ mang tính minh họa, không phải người hay đơn vị thật.",
   "language": "vi",
@@ -46,7 +46,7 @@
   ],
   "workflows": [
     {
-      "id": "chuyen-truong",
+      "id": "chuyentruong",
       "name": "Chuyển trường",
       "description": "Trường gửi, phòng giáo dục duyệt và phản hồi kết quả về trường.",
       "recordType": "chuyen-truong",
@@ -170,7 +170,7 @@
       ]
     },
     {
-      "id": "cap-ban-sao-hoc-ba",
+      "id": "capbansaohocba",
       "name": "Cấp bản sao học bạ",
       "description": "Trường tiếp nhận, lãnh đạo duyệt và cấp bản sao học bạ.",
       "recordType": "cap-ban-sao-hoc-ba",

@@ -58,8 +58,8 @@ test("the education fixture reads unchanged", async () => {
   assert.deepEqual(result.pack.manifest, JSON.parse(await readFile(path.join(EDUCATION, "pack.json"), "utf8")));
   assert.deepEqual(result.pack.units, JSON.parse(await readFile(path.join(EDUCATION, "units.json"), "utf8")));
   assert.deepEqual(result.pack.workflows.map(workflow => [workflow.id, workflow.bpmn, workflow.processId, workflow.userTaskIds]), [
-    ["chuyen-truong", "workflows/chuyen-truong.bpmn20.xml", "chuyen-truong", ["tiep-nhan-ho-so", "xet-duyet", "thong-bao-ket-qua"]],
-    ["cap-ban-sao-hoc-ba", "workflows/cap-ban-sao-hoc-ba.bpmn20.xml", "cap-ban-sao-hoc-ba", ["tiep-nhan-yeu-cau", "cap-ban-sao"]],
+    ["chuyentruong", "workflows/chuyen-truong.bpmn20.xml", "chuyentruong", ["tiep-nhan-ho-so", "xet-duyet", "thong-bao-ket-qua"]],
+    ["capbansaohocba", "workflows/cap-ban-sao-hoc-ba.bpmn20.xml", "capbansaohocba", ["tiep-nhan-yeu-cau", "cap-ban-sao"]],
   ]);
   for (const workflow of result.pack.workflows) {
     assert.equal(workflow.xml, await readFile(path.join(EDUCATION, workflow.bpmn), "utf8"), `${workflow.bpmn} is read verbatim`);
@@ -238,7 +238,7 @@ test("BPMN ids must match the manifest in both directions", async () => {
     await patchManifest(pack, manifest => { manifest.workflows[0].id = "khac-qua-trinh"; });
     assertRejected(await readPack(pack), PackReadErrorCode.PACK_BPMN_PROCESS_ID_MISMATCH, "/process/@id");
 
-    await patchManifest(pack, manifest => { manifest.workflows[0].id = "chuyen-truong"; manifest.workflows[0].steps[0].id = "buoc-ao"; });
+    await patchManifest(pack, manifest => { manifest.workflows[0].id = "chuyentruong"; manifest.workflows[0].steps[0].id = "buoc-ao"; });
     assertRejected(await readPack(pack), PackReadErrorCode.PACK_BPMN_STEP_MISMATCH, "/process/userTask");
 
     const bpmnPath = path.join(pack, "workflows", "chuyen-truong.bpmn20.xml");
@@ -265,7 +265,7 @@ test("BPMN XML must be namespace-correct and free of DTDs", async () => {
     await writeBpmn(good.replace("</process>", "<process id='hai' /></process>"));
     assertRejected(await readPack(pack), PackReadErrorCode.PACK_BPMN_XML_INVALID, "");
 
-    await writeBpmn(good.replace('<userTask id="xet-duyet" name="Xét duyệt chuyển trường" />', '<userTask id="xet-duyet" name="Xét duyệt chuyển trường" /><userTask id="xet-duyet" />'));
+    await writeBpmn(good.replace("</process>", '<userTask id="xet-duyet" name="Xét duyệt chuyển trường" /></process>'));
     assertRejected(await readPack(pack), PackReadErrorCode.PACK_BPMN_XML_INVALID, "");
 
     await writeBpmn(good.replace("</process>", ""));
@@ -304,7 +304,7 @@ test("a symlink that stays inside the pack directory is followed", async () => {
     await patchManifest(pack, manifest => { manifest.workflows[0].bpmn = "workflows/bi-danh.bpmn20.xml"; });
     const result = await readPack(pack);
     assert.equal(result.ok, true);
-    assert.equal(result.pack.workflows[0].processId, "chuyen-truong");
+    assert.equal(result.pack.workflows[0].processId, "chuyentruong");
   });
 });
 
@@ -329,16 +329,15 @@ test("a userTask outside the process cannot satisfy the manifest", async () => {
     const good = await readFile(bpmnPath, "utf8");
     const writeBpmn = xml => writeFile(bpmnPath, xml);
 
-    await writeBpmn(good.replace(
-      '<userTask id="xet-duyet" name="Xét duyệt chuyển trường" />',
-      '<subProcess id="con"><userTask id="xet-duyet" name="Xét duyệt chuyển trường" /></subProcess>'
-    ));
+    await writeBpmn(good
+      .replace('<userTask id="xet-duyet"', '<subProcess id="con"><userTask id="xet-duyet"')
+      .replace('<sequenceFlow id="f-xet-duyet-quyet-dinh"', '</subProcess><sequenceFlow id="f-xet-duyet-quyet-dinh"'));
     const subprocess = await readPack(pack);
     assert.equal(subprocess.ok, true);
     assert.deepEqual(subprocess.pack.workflows[0].userTaskIds, ["tiep-nhan-ho-so", "xet-duyet", "thong-bao-ket-qua"]);
 
     await writeBpmn(good
-      .replace('<userTask id="xet-duyet" name="Xét duyệt chuyển trường" />', "")
+      .replace(/<userTask id="xet-duyet"[\s\S]*?<\/userTask>/, "")
       .replace("</process>", '</process>\n  <userTask id="xet-duyet" name="Xét duyệt chuyển trường" />'));
     const sibling = await readPack(pack);
     const [siblingError] = assertRejected(sibling, PackReadErrorCode.PACK_BPMN_STEP_MISMATCH, "/process/userTask");
@@ -346,7 +345,7 @@ test("a userTask outside the process cannot satisfy the manifest", async () => {
     assert.ok(!sibling.errors.some(error => error.code === PackReadErrorCode.PACK_BPMN_PROCESS_ID_MISMATCH), "the process id itself still matches");
 
     await writeBpmn(good
-      .replace('<process id="chuyen-truong"', "<wrap><process id=\"chuyen-truong\"")
+      .replace('<process id="chuyentruong"', "<wrap><process id=\"chuyentruong\"")
       .replace("</process>", "</process></wrap>"));
     assertRejected(await readPack(pack), PackReadErrorCode.PACK_BPMN_XML_INVALID, "");
   });
