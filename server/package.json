@@ -16,7 +16,8 @@
   },
   "scripts": {
     "start": "node main.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "pack:install": "node ../scripts/pack-install.mjs"
   },
   "dependencies": {
     "@junctura/server-client": "^0.1.0",

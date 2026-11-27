@@ -160,3 +160,48 @@ Hợp đồng kết quả:
 Module cũng xuất `PackReadErrorCode` (bảng mã trên). Nửa "hai tệp cùng `formatVersion`" của kiểm 6 được schema ghim bằng `const 1`; nửa "phiên bản mới phải lớn hơn" khi nâng cấp không thuộc bộ đọc — `pack:install` (issue #12) tự kiểm trên hai manifest khi cài, và bộ đọc cố tình không cài bộ so sánh phiên bản.
 
 Cách bộ đọc thực hiện: cấu trúc từng tài liệu được kiểm bằng schema draft 2020-12 thật, nạp trực tiếp `schemas/*.schema.json` qua `Ajv2020` (`allErrors: true`), không cài lại logic schema; BPMN được parse namespace-aware bằng `saxes` và từ chối mọi DOCTYPE/DTD nên không có tham chiếu ngoài nào được nạp hay phân giải; containment của `pack.json`, `units.json` và mọi tệp BPMN được chứng minh trước khi mở tệp, symlink nằm trong gói thì được theo, vượt gói thì từ chối.
+
+## Lệnh `pack:install --dry-run` (issue #12)
+
+Lệnh cài gói nằm ở `scripts/pack-install.mjs`; đợt đầu tiên chỉ bật chế độ dry-run, kế hoạch lập từ kết quả của bộ đọc gói ở trên:
+
+```sh
+node scripts/pack-install.mjs examples/packs/education --dry-run
+npm run pack:install --prefix server -- ../examples/packs/education --dry-run
+```
+
+Lệnh **chỉ đọc**: kiểm gói trước (`readPack()`), không gọi HTTP, không ghi tệp, không cần cấu hình hay token; kế hoạch in ra stdout là JSON ổn định từng byte giữa các lần chạy (không có mốc thời gian). Nhóm và đơn vị giữ nguyên ID khai báo trong gói, nên chạy lại kế hoạch cài thật sẽ trỏ đúng tài nguyên đã tạo, không nhân đôi. Các bước `planned` mang hai loại chặn khác nhau: mỗi bước nạp BPMN chờ `blockedBy: "junctura-dxos#112"` vì Core chưa ghim thao tác triển khai định nghĩa nào (`/v1/workflows/definitions` chỉ đọc); còn `ws_packs.schema.register` và `ws_packs.packRecord.write` chờ `blockedBy: "junctura-workspace#12"` — endpoint data-schema của Core đã được ghim (`PUT /v2/data-schemas/{collection}`, thao tác `registerCollectionSchema`), cái còn thiếu là *thiết kế schema của `ws_packs`* do issue #12 chưa cung cấp. Mọi bước planned **không** có `method`/`path` — kế hoạch không bịa đường dẫn hay dữ liệu giả.
+
+Mã thoát, tách bạch thực thi chưa hỗ trợ khỏi đầu vào hỏng:
+
+| Mã | Khi nào |
+| --- | --- |
+| `0` | Đã lập được kế hoạch dry-run. |
+| `1` | Đầu vào không hợp lệ: gói bị từ chối bởi `readPack()` hay bởi kiểm riêng của bộ lập kế hoạch. |
+| `2` | Dùng sai cú pháp: thiếu hoặc thừa tham số, tùy chọn lạ. |
+| `3` | Chạy thiếu `--dry-run`: thao tác cài thật chưa được triển khai, không gì bị thay đổi. |
+
+### Thứ tự và hình dạng bước
+
+Kế hoạch gồm ba nhóm bước theo thứ tự:
+
+1. **Loại đơn vị** — `PUT /v1/directory/unit-types/{unitType}` với body `{ "name": … }`, theo thứ tự `unitTypes[]` trong manifest (hợp đồng `putDirectoryUnitType` được ghim).
+2. **Đơn vị mẫu** — `PUT /v1/directory/units/{unit}` với body `{ "unitType": …, "name": … }` (hợp đồng `putDirectoryUnit`), bố cục cha-trước-con: độ sâu cây tăng dần, bằng độ sâu giữ thứ tự tệp `units.json`. Hợp đồng `DirectoryUnitWrite` được ghim không có trường `parent`, nên kế hoạch sắp thứ tự cha-trước-con nhưng không đặt liên kết cha vào body; khoảng trống này được ghi vào `notes` của kế hoạch.
+3. **Nhóm vai trò** — `PUT /v1/directory/units/{unit}/groups/{group}` với body `{ "name": … }` (hợp đồng `putDirectoryGroup`), theo đơn vị mẫu rồi theo thứ tự `groups[]` của manifest.
+
+Quy tắc gán nhóm, xác định từ khai báo quy trình của gói:
+
+- Nhóm `g` được tạo dưới đơn vị `u` khi có một `steps[]` với `role: g` và `u.unitType ∈ steps[].unitTypes`, hoặc `open.role: g` và `u.unitType ∈ open.unitTypes ?? senderUnitTypes` của quy trình đó.
+- Nhóm được khai báo nhưng không quy trình nào gán vào loại đơn vị nào sẽ không có bước nào; kế hoạch ghi điều này vào `notes`.
+
+Bước `planned` theo sau, cho mỗi quy trình (đúng thứ tự manifest) một bước `bpmn.definition.load` mang `definitionKey` trùng `workflows[].id` (đã khớp `process/@id`, đọc nguyên văn trong `pack.workflows[].xml`), rồi hai bước `ws_packs.schema.register` và `ws_packs.packRecord.write` mang `packId`, `version` và `definitionKeys`. Thiết kế nâng/gỡ tái dùng các ID này.
+
+### Kiểm riêng của bộ lập kế hoạch
+
+ID đi vào đường dẫn Directory (id của `unitTypes`, `groups` và đơn vị mẫu) phải khớp mẫu tham số đường dẫn được ghim `^[a-z][a-z0-9-]{1,63}$` — schema stableId của gói còn nhận một ký tự, nhưng không tài nguyên Directory nào trỏ được tới ID đó; vi phạm là đầu vào không hợp lệ, mã `PLAN_DIRECTORY_ID_INVALID`, kèm `file`/`path` như lỗi của bộ đọc. Độ dài `name` (1–120) đã do schema gói ghim, khớp các hợp đồng ghi của Directory.
+
+Kiểm thứ hai: id quy trình trở thành khóa định nghĩa BPMN, nên phải khớp mẫu `definitionKey` được ghim của Core `^[a-z][a-z0-9_]{2,63}$` — schema stableId của gói còn nhận gạch ngang và id một hay hai ký tự, nhưng một validateDefinition thật sẽ từ chối các khóa đó, nên bộ lập kế hoạch từ chối trước khi lập: mã `PLAN_DEFINITION_KEY_INVALID`, kèm `file`/`path` như lỗi của bộ đọc. Gói mẫu Health cũ (khóa `chuyen-tuyen`, `thanh-toan`) vì thế bị từ chối ở bước lập kế hoạch cho tới khi gói được đổi khóa.
+
+### Ranh giới với đợt cài thật
+
+Chưa triển khai, và dry-run không được đọc là đã cài: thực thi thật (Directory, nạp BPMN, `ws_packs`), kiểm "phiên bản mới phải lớn hơn" khi nâng, gỡ gói, thử lại sau lỗi từng phần và đổi gói theo cấu hình. Việc nạp BPMN theo tenant chờ [junctura-dxos#112](https://github.com/vku2-open-source-2026/junctura-dxos/issues/112); nghiệm thu cài trên stack thật thuộc issue #27. Kiểm tra tự động của lệnh nằm ở `server/tests/pack-install.test.mjs`.
