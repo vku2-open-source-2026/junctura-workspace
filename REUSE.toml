@@ -3,6 +3,6 @@
 version = 1
 
 [[annotations]]
-path = ["NOTICE", ".node-version", ".junctura-health-version", "**/*.json"]
+path = ["NOTICE", ".node-version", ".junctura-health-version", "**/*.json", "**/*.bpmn20.xml"]
 SPDX-FileCopyrightText = "2026 Junctura Contributors"
 SPDX-License-Identifier = "Apache-2.0"

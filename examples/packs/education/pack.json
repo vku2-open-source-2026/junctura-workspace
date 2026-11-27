@@ -1,0 +1,280 @@
+{
+  "formatVersion": 1,
+  "id": "education",
+  "version": "0.1.0",
+  "name": "Gói Giáo dục",
+  "description": "Gói mẫu cho ngành giáo dục: hồ sơ chuyển trường và cấp bản sao học bạ giữa phòng giáo dục và các trường. Toàn bộ dữ liệu chỉ mang tính minh họa, không phải người hay đơn vị thật.",
+  "language": "vi",
+  "unitsFile": "units.json",
+  "groups": [
+    {
+      "id": "van-thu",
+      "name": "Văn thư",
+      "description": "Tiếp nhận và trả kết quả hồ sơ."
+    },
+    {
+      "id": "hoc-vu",
+      "name": "Học vụ"
+    },
+    {
+      "id": "lanh-dao",
+      "name": "Lãnh đạo đơn vị",
+      "description": "Xét duyệt và ký kết luận."
+    }
+  ],
+  "unitTypes": [
+    {
+      "id": "phong-giao-duc",
+      "name": "Phòng Giáo dục"
+    },
+    {
+      "id": "truong",
+      "name": "Trường học"
+    }
+  ],
+  "recordTypes": [
+    {
+      "id": "chuyen-truong",
+      "name": "Hồ sơ chuyển trường",
+      "description": "Học sinh xin chuyển tới trường khác trong cùng phòng giáo dục."
+    },
+    {
+      "id": "cap-ban-sao-hoc-ba",
+      "name": "Cấp bản sao học bạ",
+      "description": "Yêu cầu cấp bản sao học bạ cho học sinh đã tốt nghiệp hoặc đang học."
+    }
+  ],
+  "workflows": [
+    {
+      "id": "chuyen-truong",
+      "name": "Chuyển trường",
+      "description": "Trường gửi, phòng giáo dục duyệt và phản hồi kết quả về trường.",
+      "recordType": "chuyen-truong",
+      "bpmn": "workflows/chuyen-truong.bpmn20.xml",
+      "senderUnitTypes": ["truong"],
+      "receiverUnitTypes": ["phong-giao-duc", "truong"],
+      "senderGroups": ["hoc-vu"],
+      "receiverGroups": ["van-thu", "lanh-dao", "hoc-vu"],
+      "open": {
+        "role": "hoc-vu",
+        "form": {
+          "fields": [
+            {
+              "id": "ho-ten-hoc-sinh",
+              "label": "Họ tên học sinh",
+              "type": "text",
+              "required": true
+            },
+            {
+              "id": "lop-hien-tai",
+              "label": "Lớp hiện tại",
+              "type": "text",
+              "required": true
+            },
+            {
+              "id": "truong-chuyen-den",
+              "label": "Trường muốn chuyển đến",
+              "type": "text",
+              "required": true
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "id": "tiep-nhan-ho-so",
+          "name": "Tiếp nhận hồ sơ",
+          "role": "van-thu",
+          "unitTypes": ["phong-giao-duc"],
+          "deadlineDays": 2,
+          "form": {
+            "fields": [
+              {
+                "id": "ghi-chu-tiep-nhan",
+                "label": "Ghi chú tiếp nhận",
+                "type": "text-multiline"
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "tiep-nhan",
+              "label": "Tiếp nhận hồ sơ",
+              "outcome": "approve"
+            },
+            {
+              "id": "tu-choi-tiep-nhan",
+              "label": "Từ chối tiếp nhận",
+              "outcome": "reject",
+              "requiresReason": true
+            }
+          ]
+        },
+        {
+          "id": "xet-duyet",
+          "name": "Xét duyệt chuyển trường",
+          "role": "lanh-dao",
+          "unitTypes": ["phong-giao-duc"],
+          "deadlineDays": 5,
+          "form": {
+            "fields": [
+              {
+                "id": "so-cong-van",
+                "label": "Số công văn",
+                "type": "text"
+              },
+              {
+                "id": "ngay-cong-van",
+                "label": "Ngày công văn",
+                "type": "date"
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "chap-nhan",
+              "label": "Chấp nhận chuyển trường",
+              "outcome": "approve"
+            },
+            {
+              "id": "khong-chap-nhan",
+              "label": "Không chấp nhận",
+              "outcome": "reject",
+              "requiresReason": true
+            }
+          ]
+        },
+        {
+          "id": "thong-bao-ket-qua",
+          "name": "Thông báo kết quả về trường cũ",
+          "role": "hoc-vu",
+          "unitTypes": ["truong"],
+          "deadlineDays": 3,
+          "form": {
+            "fields": [
+              {
+                "id": "lop-nhan-hoc-sinh",
+                "label": "Lớp nhận học sinh tại trường mới",
+                "type": "text"
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "hoan-tat",
+              "label": "Hoàn tất chuyển trường",
+              "outcome": "approve"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cap-ban-sao-hoc-ba",
+      "name": "Cấp bản sao học bạ",
+      "description": "Trường tiếp nhận, lãnh đạo duyệt và cấp bản sao học bạ.",
+      "recordType": "cap-ban-sao-hoc-ba",
+      "bpmn": "workflows/cap-ban-sao-hoc-ba.bpmn20.xml",
+      "senderUnitTypes": ["truong"],
+      "receiverUnitTypes": ["truong"],
+      "senderGroups": ["hoc-vu"],
+      "receiverGroups": ["hoc-vu", "lanh-dao"],
+      "open": {
+        "role": "hoc-vu",
+        "form": {
+          "fields": [
+            {
+              "id": "ho-ten-hoc-sinh",
+              "label": "Họ tên học sinh",
+              "type": "text",
+              "required": true
+            },
+            {
+              "id": "so-hoc-ba",
+              "label": "Số học bạ",
+              "type": "text",
+              "required": true
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "id": "tiep-nhan-yeu-cau",
+          "name": "Tiếp nhận yêu cầu",
+          "role": "hoc-vu",
+          "unitTypes": ["truong"],
+          "deadlineDays": 2,
+          "form": {
+            "fields": [
+              {
+                "id": "so-ban-sao",
+                "label": "Số bản sao cần cấp",
+                "type": "select",
+                "options": ["01", "02", "03"]
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "tiep-nhan",
+              "label": "Tiếp nhận yêu cầu",
+              "outcome": "approve"
+            },
+            {
+              "id": "tu-choi",
+              "label": "Từ chối yêu cầu",
+              "outcome": "reject",
+              "requiresReason": true
+            }
+          ]
+        },
+        {
+          "id": "cap-ban-sao",
+          "name": "Cấp bản sao học bạ",
+          "role": "lanh-dao",
+          "unitTypes": ["truong"],
+          "deadlineDays": 5,
+          "form": {
+            "fields": [
+              {
+                "id": "so-vao-so",
+                "label": "Số vào sổ cấp bản sao",
+                "type": "text"
+              },
+              {
+                "id": "ngay-cap",
+                "label": "Ngày cấp",
+                "type": "date"
+              },
+              {
+                "id": "ban-sao-hoc-ba",
+                "label": "Tệp bản sao học bạ",
+                "type": "file"
+              }
+            ]
+          },
+          "decisions": [
+            {
+              "id": "dong-y-cap",
+              "label": "Đồng ý cấp bản sao",
+              "outcome": "approve"
+            },
+            {
+              "id": "tu-choi-cap",
+              "label": "Từ chối cấp bản sao",
+              "outcome": "reject",
+              "requiresReason": true
+            },
+            {
+              "id": "yeu-cau-bo-sung",
+              "label": "Yêu cầu bổ sung giấy tờ",
+              "outcome": "request-info",
+              "requiresReason": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
