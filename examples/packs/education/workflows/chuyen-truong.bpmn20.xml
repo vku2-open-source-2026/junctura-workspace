@@ -1,12 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/education">
-  <process id="chuyen-truong" isExecutable="true">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             targetNamespace="https://junctura.studio/workspace/education">
+  <process id="chuyentruong" name="Chuyển trường" isExecutable="true">
     <startEvent id="start" name="Trường gửi hồ sơ" />
-    <userTask id="tiep-nhan-ho-so" name="Tiếp nhận hồ sơ" />
-    <userTask id="xet-duyet" name="Xét duyệt chuyển trường" />
-    <userTask id="thong-bao-ket-qua" name="Thông báo kết quả về trường cũ" />
-    <endEvent id="end" name="Hoàn tất" />
+    <sequenceFlow id="f-mo-ho-so" sourceRef="start" targetRef="tiep-nhan-ho-so" />
+    <userTask id="tiep-nhan-ho-so" name="Tiếp nhận hồ sơ" flowable:candidateGroups="van-thu">
+      <documentation>Bước 1, nhóm van-thu ở Phòng Giáo dục. Hạn xử lý: 2 ngày lịch kể từ khi bước mở (deadlineDays=2, UTC).</documentation>
+    </userTask>
+    <sequenceFlow id="f-tiep-nhan-quyet-dinh" sourceRef="tiep-nhan-ho-so" targetRef="quyet-dinh-tiep-nhan" />
+    <exclusiveGateway id="quyet-dinh-tiep-nhan" name="Kết quả tiếp nhận hồ sơ" />
+    <sequenceFlow id="f-tiep-nhan-duyet" sourceRef="quyet-dinh-tiep-nhan" targetRef="xet-duyet">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'tiep-nhan'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f-tiep-nhan-tu-choi" sourceRef="quyet-dinh-tiep-nhan" targetRef="end-tu-choi-tiep-nhan">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'tu-choi-tiep-nhan'}</conditionExpression>
+    </sequenceFlow>
+    <userTask id="xet-duyet" name="Xét duyệt chuyển trường" flowable:candidateGroups="lanh-dao">
+      <documentation>Bước 2, nhóm lanh-dao ở Phòng Giáo dục. Hạn xử lý: 5 ngày lịch kể từ khi bước mở (deadlineDays=5, UTC).</documentation>
+    </userTask>
+    <sequenceFlow id="f-xet-duyet-quyet-dinh" sourceRef="xet-duyet" targetRef="quyet-dinh-xet-duyet" />
+    <exclusiveGateway id="quyet-dinh-xet-duyet" name="Kết quả xét duyệt" />
+    <sequenceFlow id="f-xet-duyet-chap-nhan" sourceRef="quyet-dinh-xet-duyet" targetRef="thong-bao-ket-qua">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'chap-nhan'}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f-xet-duyet-khong-chap-nhan" sourceRef="quyet-dinh-xet-duyet" targetRef="end-khong-chap-nhan">
+      <conditionExpression xsi:type="tFormalExpression">${decision == 'khong-chap-nhan'}</conditionExpression>
+    </sequenceFlow>
+    <userTask id="thong-bao-ket-qua" name="Thông báo kết quả về trường cũ" flowable:candidateGroups="hoc-vu">
+      <documentation>Bước 3, nhóm hoc-vu ở trường gửi. Hạn xử lý: 3 ngày lịch kể từ khi bước mở (deadlineDays=3, UTC).</documentation>
+    </userTask>
+    <sequenceFlow id="f-thong-bao-hoan-tat" sourceRef="thong-bao-ket-qua" targetRef="end" />
+    <endEvent id="end" name="Hoàn tất chuyển trường" />
+    <endEvent id="end-tu-choi-tiep-nhan" name="Từ chối tiếp nhận" />
+    <endEvent id="end-khong-chap-nhan" name="Không chấp nhận chuyển trường" />
   </process>
 </definitions>
