@@ -146,7 +146,9 @@ def malformed_manifest_problem(pack_schema, units_schema):
     with tempfile.TemporaryDirectory() as tmp:
         broken = Path(tmp) / "broken"
         broken.mkdir()
-        (broken / "pack.json").write_text('{"formatVersion": 1}', encoding="utf-8")
+        manifest = deepcopy(load_json(PACKS_DIR / "education" / "pack.json"))
+        del manifest["unitsFile"]
+        (broken / "pack.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
         problems = check_pack_dir(broken, pack_schema, units_schema, label="broken")
     if not problems:
         return "malformed manifest was accepted without a schema error"

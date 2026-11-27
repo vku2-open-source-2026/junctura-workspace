@@ -4,7 +4,7 @@
   "title": "Junctura Workspace pack manifest (format v1)",
   "description": "Manifest của một gói ngành Workspace: nhãn, nhóm vai trò, loại đơn vị, loại hồ sơ và các quy trình kèm cách mở hồ sơ và bước xử lý. Đặc tả đầy đủ nằm ở docs/PACK_FORMAT.md; các bất biến giữa tệp và giữa mảng được bộ đọc gói (issue #8) kiểm tra.",
   "type": "object",
-  "required": ["formatVersion", "id", "version", "name", "language", "groups", "unitTypes", "recordTypes", "workflows"],
+  "required": ["formatVersion", "id", "version", "name", "language", "unitsFile", "groups", "unitTypes", "recordTypes", "workflows"],
   "additionalProperties": false,
   "properties": {
     "formatVersion": {
