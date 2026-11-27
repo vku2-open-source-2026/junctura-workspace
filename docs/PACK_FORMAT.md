@@ -204,7 +204,7 @@ Kiểm thứ hai: id quy trình trở thành khóa định nghĩa BPMN, nên ph�
 
 ### Ranh giới với đợt cài thật
 
-Cài thật đã có (xem [Cài thật và kiểm tra bản đã cài](#cài-thật-và-kiểm-tra-bản-đã-cài)) và dry-run không được đọc là đã cài: vẫn chưa có nâng đổi gói theo cấu hình, cũng chưa có chọn phiên bản hoạt động và gỡ an toàn — hai việc cuối thuộc PR kế tiếp, được ghi tường minh ở phần cài thật. Kiểm tra tự động của lệnh nằm ở `server/tests/pack-install.test.mjs` (dry-run) và `server/tests/pack-lifecycle.test.mjs` (cài thật, đóng gói mock DX-OS trên loopback).
+Cài thật đã có (xem [Cài thật và kiểm tra bản đã cài](#cài-thật-và-kiểm-tra-bản-đã-cài)) và dry-run không được đọc là đã cài: nâng/đổi phiên bản là **chọn** một phiên bản đã cài (xem [Chọn phiên bản hoạt động và gỡ an toàn](#chọn-phiên-bản-hoạt-động-và-gỡ-an-toàn-issue-12)), không phải cài lại theo cấu hình. Kiểm tra tự động của lệnh nằm ở `server/tests/pack-install.test.mjs` (dry-run), `server/tests/pack-lifecycle.test.mjs` (cài thật) và `server/tests/pack-selection.test.mjs` (chọn/gỡ, đóng gói mock DX-OS trên loopback).
 
 ## Cài thật và kiểm tra bản đã cài (issue #12)
 
@@ -244,9 +244,39 @@ Kết quả stdout của cài thật là JSON `{ ok, outcome: "installed" | "rep
 
 ### Kiểm tra bản đã cài (`--list`)
 
-`--list` đọc mọi bản ghi `ws_packs` qua định danh app (phân trang đến hết, có chặn số trang), **không** ghi gì và không đăng ký schema: collection chưa tồn tại (scope chủ còn trống) trả `{ collection: "absent", packs: [] }` — một stack mới là danh sách rỗng, không phải lỗi; còn 401/403/5xx hay dữ liệu không đọc được được báo lỗi thay vì bị hiểu nhầm là "chưa cài gì". Mỗi mục gồm `packId`, `version`, `status`, `contentHash`, `complete` (`status === "available"`), `definitions` và `directory`, sắp theo packId rồi phiên bản mới nhất trước. Bản ghi ngoài phạm vi sở hữu app, hoặc phiên bản không xếp được thứ tự, dừng lệnh với mã `RECORD_SCOPE_MISMATCH` thay vì bị bỏ qua.
+`--list` đọc mọi bản ghi `ws_packs` qua định danh app (phân trang đến hết, có chặn số trang), **không** ghi gì và không đăng ký schema: collection chưa tồn tại (scope chủ còn trống) trả `{ collection: "absent", selection: null, packs: [] }` — một stack mới là danh sách rỗng, không phải lỗi; còn 401/403/5xx hay dữ liệu không đọc được được báo lỗi thay vì bị hiểu nhầm là "chưa cài gì". Mỗi mục gồm `packId`, `version`, `status`, `contentHash`, `complete` (`status === "available"`), `selected` (khớp con trỏ `active`), `definitions` và `directory`, sắp theo packId rồi phiên bản mới nhất trước; `selection` ở cấp kết quả là con trỏ hoạt động (`null` khi chưa chọn). Bản ghi ngoài phạm vi sở hữu app, hoặc phiên bản không xếp được thứ tự, dừng lệnh với mã `RECORD_SCOPE_MISMATCH` thay vì bị bỏ qua. Lựa chọn được đọc bằng **một trang nhỏ không lọc** (xem [Cơ chế giao tác](#cơ-chế-giao-tác)), nên `--list` chạy được trên owner mới chưa đăng ký `ws_pack_selections`.
 
-### Chưa thuộc PR này, làm ở PR kế tiếp
+## Chọn phiên bản hoạt động và gỡ an toàn (issue #12)
 
-- **Chọn phiên bản hoạt động (activation) và gỡ an toàn (retirement)**: bản nháp trước đây có đường dẫn này nhưng rà soát độc lập phát hiện lỗi đua chọn/xét duyệt qua bản ghi thật sự không an toàn (khóa idempotency khóa bản ghi tái sử dụng được giữa các tiến trình, và bước sửa sau commit có thể xóa nhầm lựa chọn của lần chọn sau), nên toàn bộ đường dẫn chọn/kích hoạt/gỡ đã bị xóa khỏi PR cài này. PR kế tiếp sẽ hiện thực chọn và gỡ bằng giao tác trên `POST /v2/data:batch` đã ghim, có bảo vệ trạng thái active đã chọn; tới đó tài liệu này cập nhật theo.
+Ba lệnh vận hành trạng thái hoạt động của app, dùng đúng cấu hình lifecycle như cài thật:
+
+```sh
+node scripts/pack-install.mjs examples/packs/education --select   # chọn phiên bản của thư mục gói đang gắn
+npm --prefix server run pack:select -- ../examples/packs/education
+node scripts/pack-install.mjs --retire education 0.2.0            # gỡ an toàn một phiên bản đã cài
+npm --prefix server run pack:retire -- education 0.2.0
+node scripts/pack-install.mjs --list                              # trạng thái cài + lựa chọn hoạt động
+```
+
+- `--select <pack-dir>` kiểm gói offline trước (như dry-run), rồi yêu cầu đúng phiên bản đó đã cài và `available`, và **mã băm nội dung của gói đang gắn phải trùng** mã băm đã ghi của phiên bản (`VERSION_CONTENT_MISMATCH` nếu khác) — đây là kiểm tra tối thiểu của gói đang gắn với bản ghi bền vững. Chỉ phiên bản đầy đủ khả dụng mới được chọn; phiên bản thiếu, đang `installing` hay đã `retired` bị từ chối (`SELECTION_TARGET_INVALID`). Chọn lại đúng phiên bản đã chọn là replay không ghi gì (đồng thời kiểm lại gói đang gắn).
+- `--retire <pack-id> <version>` chỉ đánh dấu bản ghi phiên bản đó `retired`; phiên bản đang được chọn bị từ chối (`RETIRE_SELECTED` — chọn phiên bản khác trước). Gỡ **không xóa** định nghĩa BPMN đã triển khai, tài nguyên Directory hay bất kỳ bản ghi/tài nguyên cũ nào hồ sơ đang chạy cần; gỡ lại phiên bản đã `retired` là replay. Không có xóa nào trong lệnh.
+- Chỉ một phiên bản hoạt động cho mỗi app tại mọi thời điểm.
+
+### Cơ chế giao tác
+
+Trạng thái chọn nằm trong collection do app sở hữu `ws_pack_selections`, đúng một bản ghi khóa `active` với con trỏ rỗng lúc khởi tạo bằng tạo theo key (tạo đua không ghi đè: PUT theo key không If-Match lên bản ghi đã có là 428; collection thiếu vẫn đọc như "chưa có lựa chọn"). Mỗi lệnh đọc lại bản ghi hiện tại cùng ETag mạnh hiện tại, không bao giờ dùng biên nhận tạo cũ — replay cùng khóa trên Core thật có thể trả con trỏ rỗng và ETag gốc dù một lần chọn sau đã commit.
+
+Chọn và gỡ mỗi thao tác là **một** `POST /v2/data:batch` nguyên tử (1–50 thao tác theo thứ tự, rollback toàn bộ khi bất kỳ thao tác hỏng, biên nhận theo `Idempotency-Key` băm toàn bộ yêu cầu gồm mọi điều kiện ghi):
+
+- **Chọn**: thay con trỏ `active` và **thay cùng-dữ-liệu** bản ghi `ws_packs` đích, cả hai theo ETag của lần đọc từng bản ghi hiện tại; đích được kiểm lại đúng id, `packId`, `version`, `contentHash` và `available` ngay dưới chính ETag đó. Một lần gỡ chen giữa danh sách và lần đọc, hoặc giữa lần đọc và commit, không thể bị chọn.
+- **Gỡ**: ghim **cùng** ETag con trỏ vừa đọc bằng thay cùng-dữ-liệu, rồi chỉ đánh bản ghi đích `retired` dưới ETag hiện tại của nó. Trước thao tác ghi đầu tiên, schema `ws_packs` hiện tại (có `retired`) được đăng ký lại desired-state: đây là migration giữ bản ghi của Core (kiểm mọi bản ghi cũ và dựng lại chỉ mục trong một giao tác), không xóa dữ liệu cũ; `ws_pack_selections` chỉ đăng ký một lần.
+
+Vì cả hai thao tác mang cùng ETag con trỏ vừa đọc, chọn đua và chọn-vs-gỡ không thể xen nhau: bên thua nhận 412 và **toàn bộ batch rollback**, dừng với lỗi xác định (`SELECTION_PRECONDITION`/`RETIRE_PRECONDITION`). Khóa idempotency phái sinh từ chính cặp ETag đã quan sát: mỗi cặp quan sát dùng đúng một yêu cầu/body qua các lần thử transport (503/423/429/5xx thử lại cùng khóa); chạy lại CLI đọc lại trạng thái đã commit, không làm gì nếu đã đúng ý, còn một lần chọn tay xen vào có thể tạo ý định/điều kiện mới — không bao giờ tự thử lại một giao tác cũ với điều kiện mới trong cùng một lần gọi. Kết quả không chắc chắn dừng với `PENDING_NOT_SETTLED`; con trỏ của bản ghi `active` duy nhất giúp xác nhận giao dịch đã ghi.
+
+### Liên hệ với `JUNCTURA_PACK_DIR` (runtime #13, PR #38)
+
+Bản ghi chọn trong DX-OS là trạng thái gốc; portal Workspace Tầng 2 phục vụ `GET /api/pack` từ gói **đang được gắn** ở `JUNCTURA_PACK_DIR` (mặc định `examples/packs/health`). Để nâng/đổi, người vận hành dùng `pack:select` để kiểm và chọn một thư mục phiên bản (ví dụ `packs/education/0.3.0`), trỏ `JUNCTURA_PACK_DIR` về đúng thư mục đó, rồi tải lại backend; có thể xem lại lựa chọn bằng `pack:list`. Runtime phục vụ đường dẫn đang được gắn, nên con trỏ đã lưu và cấu hình triển khai phải được phối hợp với nhau. PR này không gộp thay đổi frontend hay khởi động của #13.
+
+### Chưa thuộc PR này
+
 - Nâng/đổi gói theo cấu hình Workspace và nghiệm thu trên stack thật (issue #27).
