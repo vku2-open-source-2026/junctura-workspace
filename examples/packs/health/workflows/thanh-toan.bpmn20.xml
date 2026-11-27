@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/health">
+  <process id="thanh-toan" isExecutable="true">
+    <startEvent id="start" name="Bệnh viện lập hồ sơ chi" />
+    <userTask id="lap-ho-so-chi" name="Lập hồ sơ chi" />
+    <userTask id="duyet-thanh-toan" name="Duyệt thanh toán" />
+    <endEvent id="end" name="Hoàn tất" />
+  </process>
+</definitions>

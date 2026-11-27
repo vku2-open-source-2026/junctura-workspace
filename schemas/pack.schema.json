@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vku2-open-source-2026.github.io/junctura-workspace/schemas/pack.schema.json",
+  "title": "Junctura Workspace pack manifest (format v1)",
+  "description": "Manifest của một gói ngành Workspace: nhãn, nhóm vai trò, loại đơn vị, loại hồ sơ và các quy trình kèm cách mở hồ sơ và bước xử lý. Đặc tả đầy đủ nằm ở docs/PACK_FORMAT.md; các bất biến giữa tệp và giữa mảng được bộ đọc gói (issue #8) kiểm tra.",
+  "type": "object",
+  "required": ["formatVersion", "id", "version", "name", "language", "groups", "unitTypes", "recordTypes", "workflows"],
+  "additionalProperties": false,
+  "properties": {
+    "formatVersion": {
+      "const": 1,
+      "description": "Phiên bản đặc tả định dạng gói. v1 = 1."
+    },
+    "id": {
+      "$ref": "#/$defs/stableId",
+      "description": "Định danh gói, ổn định vĩnh viễn, không đổi khi nâng phiên bản."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$",
+      "description": "Phiên bản gói dạng X.Y.Z kèm tiền phát tùy chọn (ví dụ 0.1.0, 1.2.0-rc.1), theo đúng mẫu ở đây; tăng khi nội dung gói thay đổi."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "description": "Nhãn hiển thị của gói."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$",
+      "description": "Ngôn ngữ của mọi nhãn trong gói (BCP-47 một phần, hai chữ cái)."
+    },
+    "unitsFile": {
+      "const": "units.json",
+      "description": "Tên tệp danh mục đơn vị; v1 cố định là units.json."
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Nhóm vai trò xử lý hồ sơ. Khi cài gói, pack:install tạo nhóm tương ứng trong Directory (Keycloak groups); thành viên đơn vị được gán vai trò qua nhóm này.",
+      "items": { "$ref": "#/$defs/group" }
+    },
+    "unitTypes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Các loại đơn vị trong ngành (ví dụ bệnh viện, trường học). pack:install tạo loại đơn vị tương ứng trong Directory.",
+      "items": { "$ref": "#/$defs/unitType" }
+    },
+    "recordTypes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Các loại hồ sơ của gói.",
+      "items": { "$ref": "#/$defs/recordType" }
+    },
+    "workflows": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Các quy trình BPMN kèm cấu hình mở hồ sơ và từng bước xử lý.",
+      "items": { "$ref": "#/$defs/workflow" }
+    }
+  },
+  "$defs": {
+    "group": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "unitType": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+      }
+    },
+    "recordType": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["id", "name", "recordType", "bpmn", "senderUnitTypes", "receiverUnitTypes", "senderGroups", "receiverGroups", "open", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "recordType": {
+          "type": "string",
+          "description": "Trỏ tới một id trong recordTypes; kiểm chéo do bộ đọc gói (issue #8) thực hiện."
+        },
+        "bpmn": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]([A-Za-z0-9/_-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?)*\\.(bpmn|bpmn20\\.xml)$",
+          "description": "Đường dẫn tương đối tới tệp BPMN trong thư mục gói, phần mở rộng .bpmn20.xml như Junctura Health và DX-OS đang dùng (còn nhận .bpmn)."
+        },
+        "senderUnitTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Loại đơn vị được mở hồ sơ; mỗi phần tử phải là một unitType của gói."
+        },
+        "receiverUnitTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Loại đơn vị nhận và xử lý hồ sơ; mỗi phần tử phải là một unitType của gói."
+        },
+        "senderGroups": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Nhóm vai trò ở phía đơn vị gửi, trỏ tới groups[].id; nhóm mở hồ sơ trong open phải thuộc đây."
+        },
+        "receiverGroups": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Nhóm vai trò ở phía đơn vị nhận, trỏ tới groups[].id."
+        },
+        "open": { "$ref": "#/$defs/open" },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "open": {
+      "type": "object",
+      "required": ["role", "form"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "Nhóm vai trò được mở hồ sơ (thuộc senderGroups), trỏ tới groups[].id."
+        },
+        "unitTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Giới hạn loại đơn vị được mở hồ sơ; bỏ qua nếu mọi senderUnitTypes đều được mở."
+        },
+        "form": { "$ref": "#/$defs/form" }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["id", "name", "role", "unitTypes", "deadlineDays", "decisions"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "role": {
+          "type": "string",
+          "description": "Nhóm vai trò phụ trách bước, trỏ tới groups[].id; thuộc senderGroups hoặc receiverGroups của quy trình (kiểm chéo issue #8)."
+        },
+        "unitTypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Loại đơn vị thực hiện bước; phải nằm trong sender/receiverUnitTypes của quy trình (kiểm chéo issue #8)."
+        },
+        "deadlineDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90,
+          "description": "Số ngày lịch tối đa để hoàn tất bước. Hạn tuyệt đối được ghi lại ngay khi bước mở, bằng mốc bước mở cộng deadlineDays × 24 giờ theo UTC; không dùng lịch ngày làm việc."
+        },
+        "form": { "$ref": "#/$defs/form" },
+        "decisions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/decision" }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["id", "label", "outcome"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "enum": ["reject", "request-info"] } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "required": ["requiresReason"],
+            "properties": { "requiresReason": { "const": true } }
+          }
+        }
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "outcome": {
+          "enum": ["approve", "reject", "forward", "request-info"],
+          "description": "Kết quả bước: duyệt, từ chối, chuyển tiếp hoặc yêu cầu bổ sung."
+        },
+        "requiresReason": {
+          "type": "boolean",
+          "default": false,
+          "description": "Bắt buộc nhập lý do khi chọn quyết định này; schema ép requiresReason = true khi outcome là reject hoặc request-info."
+        }
+      }
+    },
+    "form": {
+      "type": "object",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/field" }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["id", "label", "type"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "select" } },
+            "required": ["type"]
+          },
+          "then": { "required": ["options"] }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["text", "text-multiline", "number", "date", "file"] } },
+            "required": ["type"]
+          },
+          "then": { "not": { "required": ["options"] } }
+        }
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "type": {
+          "enum": ["text", "text-multiline", "number", "date", "select", "file"],
+          "description": "Miền giá trị của trường biểu mẫu."
+        },
+        "required": { "type": "boolean", "default": false },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": "Danh sách lựa chọn, chỉ dành cho type là select (schema ép điều kiện này)."
+        }
+      }
+    },
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$",
+      "description": "Định danh ổn định: chữ thường, số và gạch ngang, mở đầu bằng chữ cái, không đổi ý nghĩa giữa các phiên bản gói."
+    }
+  }
+}

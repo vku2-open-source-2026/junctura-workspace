@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Junctura Contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" targetNamespace="https://junctura.studio/workspace/education">
+  <process id="cap-ban-sao-hoc-ba" isExecutable="true">
+    <startEvent id="start" name="Yêu cầu cấp bản sao học bạ" />
+    <userTask id="tiep-nhan-yeu-cau" name="Tiếp nhận yêu cầu" />
+    <userTask id="cap-ban-sao" name="Cấp bản sao học bạ" />
+    <endEvent id="end" name="Hoàn tất" />
+  </process>
+</definitions>
