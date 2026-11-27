@@ -176,10 +176,10 @@ Mã thoát, tách bạch thực thi chưa hỗ trợ khỏi đầu vào hỏng:
 
 | Mã | Khi nào |
 | --- | --- |
-| `0` | Đã lập được kế hoạch dry-run. |
-| `1` | Đầu vào không hợp lệ: gói bị từ chối bởi `readPack()` hay bởi kiểm riêng của bộ lập kế hoạch. |
+| `0` | Đã lập được kế hoạch dry-run, đã cài thật hoặc đã liệt kê bản ghi gói. |
+| `1` | Đầu vào không hợp lệ: gói bị từ chối bởi `readPack()` hay bởi kiểm riêng của bộ lập kế hoạch; hoặc lệnh cài thật/liệt kê thất bại (mỗi lỗi kèm `code`, `message` và cờ `uncertain` khi không chắc chắn). |
 | `2` | Dùng sai cú pháp: thiếu hoặc thừa tham số, tùy chọn lạ. |
-| `3` | Chạy thiếu `--dry-run`: thao tác cài thật chưa được triển khai, không gì bị thay đổi. |
+| `3` | Từ chối không tác động: cấu hình lifecycle thiếu (`JUNCTURA_URL`, `JUNCTURA_TENANT`, `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET`, `JUNCTURA_OPERATOR_TOKEN` — xem [Cài thật và kiểm tra bản đã cài](#cài-thật-và-kiểm-tra-bản-đã-cài)). |
 
 ### Thứ tự và hình dạng bước
 
@@ -204,4 +204,49 @@ Kiểm thứ hai: id quy trình trở thành khóa định nghĩa BPMN, nên ph�
 
 ### Ranh giới với đợt cài thật
 
-Chưa triển khai, và dry-run không được đọc là đã cài: thực thi thật (Directory, nạp BPMN, `ws_packs`), kiểm "phiên bản mới phải lớn hơn" khi nâng, gỡ gói, thử lại sau lỗi từng phần và đổi gói theo cấu hình. Việc nạp BPMN theo tenant chờ [junctura-dxos#112](https://github.com/vku2-open-source-2026/junctura-dxos/issues/112); nghiệm thu cài trên stack thật thuộc issue #27. Kiểm tra tự động của lệnh nằm ở `server/tests/pack-install.test.mjs`.
+Cài thật đã có (xem [Cài thật và kiểm tra bản đã cài](#cài-thật-và-kiểm-tra-bản-đã-cài)) và dry-run không được đọc là đã cài: vẫn chưa có nâng đổi gói theo cấu hình, cũng chưa có chọn phiên bản hoạt động và gỡ an toàn — hai việc cuối thuộc PR kế tiếp, được ghi tường minh ở phần cài thật. Kiểm tra tự động của lệnh nằm ở `server/tests/pack-install.test.mjs` (dry-run) và `server/tests/pack-lifecycle.test.mjs` (cài thật, đóng gói mock DX-OS trên loopback).
+
+## Cài thật và kiểm tra bản đã cài (issue #12)
+
+Chạy không `--dry-run` là cài thật; `--list` đọc bản ghi gói đã ghi (cài đầy đủ lẫn chưa xong) mà không thay đổi gì:
+
+```sh
+node scripts/pack-install.mjs examples/packs/education
+npm run pack:install --prefix server -- ../examples/packs/education
+node scripts/pack-install.mjs --list
+npm run pack:list --prefix server
+```
+
+Cấu hình lifecycle đọc từ môi trường, không bao giờ được in hay ghi log: `JUNCTURA_URL` (origin Gateway), `JUNCTURA_TENANT` (tenant gói cài vào), `JUNCTURA_APP_CLIENT_ID`/`JUNCTURA_APP_CLIENT_SECRET` (app backend đã đăng ký, sở hữu bản ghi `ws_packs`) và `JUNCTURA_OPERATOR_TOKEN` (bearer console-admin tenant trực tiếp cho BPMN publication; token đó phải đồng thời được ghi danh Directory manager có `directory.write` — một ghi danh quản lý của Core gắn với subject, issuer và client đã xác thực, tách riêng vai trò console-admin, xem nguồn Core `infra/postgres/037-directory-management.sql` và `docs/CORE_API.md`). Thiếu cấu hình thì lệnh từ chối với mã thoát 3, không gì bị thay đổi.
+
+### Trình tự cài (`server/pack-lifecycle.mjs`)
+
+Hợp đồng xuất bản là hợp đồng đã kiểm độc lập của Junctura DX-OS PR #113 (merge tại `bb6233f86633a42e1e1e5f58812a53064e6cd9b0`; nghiệm thu phát hành là việc riêng): `POST /v1/workflows/definitions` với body `{"xml": …}` và `Idempotency-Key` là UUID thường, chỉ người console-admin tenant trực tiếp đã xác thực (kèm `core-writer`) mới được đăng, tenant luôn suy từ định danh đã xác thực. 201 mới, 200 replay y hệt, 409 `idempotency_conflict` khi cùng khóa khác nội dung, 409 `deployment_pending_reconciliation` khi yêu cầu khác đang giữ (thử lại cùng khóa), 503 `workflow_unavailable` khi kết quả engine không chắc (cùng khóa replay từ tài nguyên đã triển khai). Ghi Directory là PUT desired-state tại khóa tên (`putDirectoryUnitType`/`putDirectoryUnit`/`putDirectoryGroup`); đọc Directory đi qua hợp đồng danh sách (danh sách đơn vị phân trang, khớp đúng Unit ID — route unit cụ thể chỉ ghim PUT).
+
+Quyền Directory tách riêng console-admin: Core chỉ cho người ghi danh quản lý Directory (gắn với subject, issuer và client đã xác thực) mới được ghi Directory. Lệnh kiểm điều này bằng một preflight hẹp **trước mọi thay đổi**: `GET /v1/directory/unit-types?limit=1` cùng bearer người vận hành, một lượt đọc dùng đúng quyền `directory.write` mà cài sẽ dùng (không dùng lối tắt Console danh sách đơn vị). Thất bại 403 được giữ nguyên trạng thái và báo rõ operator console-admin chưa được ghi danh Directory manager có `directory.write`, với **số tác động bằng không** trên `ws_packs`, Directory và engine; lỗi khác khi đọc preflight được báo là không chắc chắn. Cài thật tiếp tục dùng credential người vận hành đã kiểm cho Directory và BPMN, và credential app backend cho bản ghi thuộc sở hữu app.
+
+Lệnh kiểm gói trước bằng `readPack()` như dry-run — gói hỏng thì không bao giờ được lập kế hoạch, chưa nói tới thực thi — rồi dựng kế hoạch thực thi từ kế hoạch dry-run: các bước Directory giữ nguyên thứ tự, cộng bốn nhóm bước `ready`:
+
+1. `ws_packs.schema.register` — `PUT /v2/data-schemas/ws_packs` (desired-state, replay an toàn), chạy trước mọi đọc/ghi bản ghi.
+2. `ws_packs.reservation.create` — upsert bản ghi `ws_packs` theo `key` với trạng thái `installing`, **trước mọi tác động Directory hay Flowable**. Bản ghi giữ chính xác phiên bản và mã băm nội dung (`contentHash` = SHA-256 canonical của manifest + units + BPMN nguồn), nên một phiên bản đã reservate thì nội dung khác cùng phiên bản bị từ chối ngay cả khi chưa có bản ghi hoàn tất nào.
+3. Các bước Directory và `POST /v1/workflows/definitions` cho từng quy trình, mỗi quy trình một khóa phái sinh từ `tenant|packId|version|publish|workflowId|contentHash`.
+4. `ws_packs.packRecord.finalize` — thay bản ghi theo `key` kèm `If-Match` của ETag vừa đọc, chỉ khi reservation vẫn là bản ghi `installing` của lệnh này; xong mới `available`.
+
+Khóa idempotency phái sinh tất toán từ `tenant|packId|version|op|contentHash` (đồng nhất phiên bản+nội dung): chạy lại sau kết quả không chắc tái dùng **đúng** khóa và body, không bao giờ tự chọn khóa mới. Phản hồi đăng BPMN phải có `id` chuỗi khác rỗng, `key` trùng đúng khóa định nghĩa yêu cầu và `version` nguyên dương trước khi finalize; thiếu gì thì lệnh dừng, reservation còn nguyên và an toàn. Việc Core là thẩm quyền về BPMN nghiệp vụ vẫn giữ: lỗi `definition_invalid` khi đăng được báo kèm `problems`, reservation giữ trạng thái chưa hoàn tất.
+
+Đọc Directory: đơn vị được tra qua `GET /v1/directory/units` phân trang rồi khớp đúng ID; một đơn vị tồn tại với `unitType` khác không bao giờ bị chiếm dụng (mã `DIRECTORY_SCOPE_MISMATCH`). Không ghi đè im lặng lên loại đơn vị, nhóm hay cha không thuộc gói.
+
+### Trạng thái `ws_packs` và phiên bản
+
+Schema `ws_packs` (một bản ghi mỗi phiên bản gói, `uniqueKey: "key"`) chỉ dùng tập con regex an toàn PostgreSQL của Core (không nhóm, không luân phiên, gạch ngang không escape đứng cuối lớp ký tự). Trường `version` **không** khai báo lại giới hạn độ dài hay định dạng semver — schema manifest ghim phiên bản bằng mẫu riêng nên mọi phiên bản hợp lệ theo manifest đều vào được bản ghi, kể tiền phát dài; bản ghi `key` vượt 128 ký tự thì băm SHA-256 thay thế (phép ánh xạ vẫn đơn ánh, phiên bản đầy đủ luôn đi kèm bản ghi và được kiểm lại mỗi lần đọc). Bộ so sánh phiên bản theo luật semver tham chiếu (BigInt, tiền phát trước phát hành) dùng cho kiểm "phiên bản mới phải lớn hơn": một phiên bản thấp hơn phiên bản đã cài bị từ chối (`VERSION_NOT_GREATER`) thay vì lùi trạng thái đã ghi.
+
+Kết quả stdout của cài thật là JSON `{ ok, outcome: "installed" | "replayed", pack, record }`; tiến trình từng bước in trên stderr.
+
+### Kiểm tra bản đã cài (`--list`)
+
+`--list` đọc mọi bản ghi `ws_packs` qua định danh app (phân trang đến hết, có chặn số trang), **không** ghi gì và không đăng ký schema: collection chưa tồn tại (scope chủ còn trống) trả `{ collection: "absent", packs: [] }` — một stack mới là danh sách rỗng, không phải lỗi; còn 401/403/5xx hay dữ liệu không đọc được được báo lỗi thay vì bị hiểu nhầm là "chưa cài gì". Mỗi mục gồm `packId`, `version`, `status`, `contentHash`, `complete` (`status === "available"`), `definitions` và `directory`, sắp theo packId rồi phiên bản mới nhất trước. Bản ghi ngoài phạm vi sở hữu app, hoặc phiên bản không xếp được thứ tự, dừng lệnh với mã `RECORD_SCOPE_MISMATCH` thay vì bị bỏ qua.
+
+### Chưa thuộc PR này, làm ở PR kế tiếp
+
+- **Chọn phiên bản hoạt động (activation) và gỡ an toàn (retirement)**: bản nháp trước đây có đường dẫn này nhưng rà soát độc lập phát hiện lỗi đua chọn/xét duyệt qua bản ghi thật sự không an toàn (khóa idempotency khóa bản ghi tái sử dụng được giữa các tiến trình, và bước sửa sau commit có thể xóa nhầm lựa chọn của lần chọn sau), nên toàn bộ đường dẫn chọn/kích hoạt/gỡ đã bị xóa khỏi PR cài này. PR kế tiếp sẽ hiện thực chọn và gỡ bằng giao tác trên `POST /v2/data:batch` đã ghim, có bảo vệ trạng thái active đã chọn; tới đó tài liệu này cập nhật theo.
+- Nâng/đổi gói theo cấu hình Workspace và nghiệm thu trên stack thật (issue #27).

@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Junctura Contributors
 // SPDX-License-Identifier: Apache-2.0
-// `pack:install` dry-run planner (issue #12, offline-first slice).
+// `pack:install` for issue #12: the offline dry-run planner of the merged
+// slice, plus real install and inspection on a Junctura DX-OS stack.
 //
-// This command plans one pack install deterministically and changes nothing:
+// `--dry-run` plans one pack install deterministically and changes nothing:
 // it reads and validates the pack with the shared preflight reader
 // `readPack()` (server/packs.mjs, docs/PACK_FORMAT.md), then emits an ordered
 // plan of the work a real install would do. The Directory PUT steps carry the
@@ -16,29 +17,31 @@
 // real blocker: Core pins no definition-deployment operation at all
 // (/v1/workflows/definitions is read-only), tracked as junctura-dxos#112.
 // Planned steps carry no HTTP method, path or body — nothing is invented.
+// This output is byte-stable between runs and unchanged by this PR.
 //
-// Hard guarantees of this slice:
-//   - validate first: a pack that fails `readPack()` is never planned;
-//   - no HTTP: the planner never fetches, never dials, never authenticates;
-//   - stable output: the plan is plain data with deterministic ordering and
-//     no timestamps, so two runs on the same pack print byte-identical JSON;
-//   - references preserved: group and unit ids are used exactly as declared,
-//     so re-running the real install would address the same resources;
-//   - unsupported execution is distinct from invalid input (exit codes below).
+// Without `--dry-run` the command performs the real install: the pack is
+// validated offline first (a pack that fails `readPack()` is never planned,
+// never executed), the lifecycle configuration is required from the
+// environment before any network call, and execution is delegated to
+// server/pack-lifecycle.mjs — operator and backend identities verified before
+// mutating, the exact version and content hash reserved in the app-owned
+// `ws_packs` collection before any Directory or Flowable action, deterministic
+// request keys replayed on rerun, and the reservation finalized to "available"
+// only after every effect committed. Explicit activation and safe retirement
+// are deliberately not part of this slice and are documented as deferred in
+// docs/PACK_FORMAT.md.
+//
+// `--list` reads the recorded pack state (complete and incomplete installs)
+// through the backend application without mutating anything.
 //
 // Exit codes:
-//   0  a dry-run plan was produced
-//   1  invalid input (the pack failed validation)
+//   0  the requested work was produced (plan, install or listing)
+//   1  invalid input (the pack failed validation) or a failed command
 //   2  usage error (missing or unknown arguments)
-//   3  unsupported execution (running without --dry-run)
-//
-// NOT implemented (deliberately, do not claim otherwise): real execution,
-// install, upgrade, removal, retry after partial failure, and the "new version
-// must be greater" check — the last one needs the installed pack state, which
-// only a real ws_packs read during a real install can provide.
-
+//   3  refused without effect (lifecycle configuration missing)
 import { pathToFileURL } from "node:url";
 import { PackReadErrorCode, readPack } from "../server/packs.mjs";
+import { PackLifecycleError, buildExecutablePlan, installPack, listInstalledPacks, readLifecycleConfig } from "../server/pack-lifecycle.mjs";
 
 /** Stable machine-readable codes of planner-level errors (docs/PACK_FORMAT.md). */
 export const PlanErrorCode = Object.freeze({
@@ -243,16 +246,41 @@ export async function planPackInstall(packDir) {
   };
 }
 
-const USAGE = `pack:install — plan a Junctura Workspace pack install (dry run only)
+const USAGE = `pack:install — install a Junctura Workspace pack
 
 Usage:
   node scripts/pack-install.mjs <pack-dir> --dry-run
+  node scripts/pack-install.mjs <pack-dir>
+  node scripts/pack-install.mjs --list
 
-The pack is validated first, then an ordered JSON plan of the install work is
-printed on stdout. Nothing is executed, no HTTP request is made and no file is
-written. See docs/PACK_FORMAT.md for the plan shape and exit codes.`;
+--dry-run validates the pack and prints an ordered JSON plan of the install
+work on stdout; nothing is executed, no HTTP request is made and no file is
+written. Without it the pack is validated first and then really installed on
+the configured DX-OS stack (JUNCTURA_URL, JUNCTURA_TENANT,
+JUNCTURA_APP_CLIENT_ID, JUNCTURA_APP_CLIENT_SECRET, JUNCTURA_OPERATOR_TOKEN —
+see docs/PACK_FORMAT.md). --list reads the recorded pack state (complete and
+incomplete installs) without changing anything. See docs/PACK_FORMAT.md for
+the plan shape and exit codes.`;
 
-/** CLI entry: argument handling and exit codes, planning delegated to planPackInstall. */
+/** Renders a lifecycle failure as the stderr payload of a failed command. */
+function errorPayload(error) {
+  return {
+    ok: false,
+    error: {
+      code: error instanceof PackLifecycleError ? error.code : "PACK_INSTALL_FAILED",
+      message: error?.message ?? String(error),
+      ...(error?.uncertain ? { uncertain: true } : {}),
+    },
+  };
+}
+
+/** Renders the lifecycle configuration error as a refused command (exit 3). */
+function configMissing(error) {
+  console.error(`${error.message}\n\nNothing was changed.`);
+  return 3;
+}
+
+/** CLI entry: argument handling and exit codes, work delegated to pure helpers. */
 async function cli(argv) {
   const flags = argv.filter(argument => argument.startsWith("-"));
   const positional = argv.filter(argument => !argument.startsWith("-"));
@@ -262,29 +290,77 @@ async function cli(argv) {
     return 0;
   }
   for (const flag of flags) {
-    if (flag !== "--dry-run") {
+    if (flag !== "--dry-run" && flag !== "--list") {
       console.error(`unknown option "${flag}"\n\n${USAGE}`);
       return 2;
+    }
+  }
+  if (flags.includes("--list")) {
+    if (positional.length !== 0 || flags.includes("--dry-run")) {
+      console.error(`--list takes no pack directory and cannot be combined with --dry-run\n\n${USAGE}`);
+      return 2;
+    }
+    let config;
+    try {
+      config = readLifecycleConfig(process.env);
+    } catch (error) {
+      if (error instanceof PackLifecycleError && error.code === "LIFECYCLE_CONFIG_MISSING") return configMissing(error);
+      throw error;
+    }
+    try {
+      const listing = await listInstalledPacks({ config, log: line => console.error(line) });
+      console.log(JSON.stringify(listing, null, 2));
+      return 0;
+    } catch (error) {
+      console.error(JSON.stringify(errorPayload(error), null, 2));
+      return 1;
     }
   }
   if (positional.length !== 1) {
     console.error(`expected exactly one pack directory\n\n${USAGE}`);
     return 2;
   }
-  if (!flags.includes("--dry-run")) {
-    console.error(
-      "pack:install cannot execute yet: only --dry-run is enabled, because the definition-deployment operation is not available (junctura-dxos#112). Nothing was changed.",
-    );
-    return 3;
-  }
 
+  // The pack is always validated and planned offline first: a pack that fails
+  // validation is never planned and never executed, with or without --dry-run.
   const planned = await planPackInstall(positional[0]);
   if (!planned.ok) {
     console.error(JSON.stringify({ ok: false, errors: planned.errors }, null, 2));
     return 1;
   }
-  console.log(JSON.stringify(planned.plan, null, 2));
-  return 0;
+  if (flags.includes("--dry-run")) {
+    console.log(JSON.stringify(planned.plan, null, 2));
+    return 0;
+  }
+
+  // Real install: the lifecycle configuration is required before anything
+  // talks to the stack, so a missing configuration refuses without effect.
+  let config;
+  try {
+    config = readLifecycleConfig(process.env);
+  } catch (error) {
+    if (error instanceof PackLifecycleError && error.code === "LIFECYCLE_CONFIG_MISSING") return configMissing(error);
+    throw error;
+  }
+  const read = await readPack(positional[0]);
+  if (!read.ok) {
+    console.error(JSON.stringify({ ok: false, errors: read.errors }, null, 2));
+    return 1;
+  }
+  try {
+    const executable = buildExecutablePlan({ plan: planned, pack: read.pack, tenant: config.tenant });
+    const outcome = await installPack({ plan: executable.plan, config, log: line => console.error(line) });
+    console.log(JSON.stringify({
+      ok: true,
+      outcome: outcome.outcome,
+      pack: executable.plan.pack,
+      record: outcome.record,
+    }, null, 2));
+    return 0;
+  } catch (error) {
+    console.error(JSON.stringify(errorPayload(error), null, 2));
+    return 1;
+  }
 }
 
 const invoked = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

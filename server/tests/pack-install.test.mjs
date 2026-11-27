@@ -236,11 +236,13 @@ test("definition keys outside the pinned Core pattern are rejected before any pl
   assert.match(errors[0].message, /\[a-z\]\[a-z0-9_\]\{2,63\}/);
 });
 
-test("running without --dry-run is unsupported execution, exit 3", async () => {
-  const { status, stdout, stderr } = run([EDUCATION]);
-  assert.equal(status, 3, "unsupported execution must be distinct from invalid input");
+test("real execution without lifecycle configuration is refused without effect, exit 3", async () => {
+  const { status, stdout, stderr } = run([EDUCATION], {
+    env: { ...process.env, JUNCTURA_URL: "", JUNCTURA_TENANT: "", JUNCTURA_APP_CLIENT_ID: "", JUNCTURA_APP_CLIENT_SECRET: "", JUNCTURA_OPERATOR_TOKEN: "" },
+  });
+  assert.equal(status, 3, "a missing configuration is refused, distinct from invalid input");
   assert.equal(stdout, "");
-  assert.match(stderr, /junctura-dxos#112/);
+  assert.match(stderr, /JUNCTURA_URL/);
   assert.match(stderr, /Nothing was changed/);
 });
 
