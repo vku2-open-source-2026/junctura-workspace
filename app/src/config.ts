@@ -7,8 +7,9 @@ export interface PortalConfig {
   juncturaUrl: string;
   /** OIDC issuer of the realm, for example https://<host>/identity/realms/junctura. */
   issuer: string;
-  /** Public PKCE client of the portal (demo/plan.mjs PORTAL.webClientId). */
+  /** Public PKCE client of the portal; in same-client mode this must exactly equal JUNCTURA_APP_CLIENT_ID (legacy default: health-portal-web). */
   clientId: string;
+  oidcMode?: "same-client";
 }
 
 const CLIENT_ID = /^[a-z0-9][a-z0-9_-]{0,62}$/;
@@ -20,11 +21,12 @@ export function fallbackConfig(origin = globalThis.location?.origin ?? ""): Port
 
 function valid(value: unknown): PortalConfig | null {
   if (!value || typeof value !== "object") return null;
-  const { juncturaUrl, issuer, clientId } = value as Record<string, unknown>;
+  const { juncturaUrl, issuer, clientId, oidcMode } = value as Record<string, unknown>;
+  if (oidcMode !== undefined && oidcMode !== "same-client") return null;
   if (typeof issuer !== "string" || !/^https?:\/\/.+/.test(issuer) || issuer.endsWith("/")) return null;
   if (typeof clientId !== "string" || !CLIENT_ID.test(clientId)) return null;
   if (juncturaUrl !== undefined && (typeof juncturaUrl !== "string" || (juncturaUrl !== "" && !/^https?:\/\/.+/.test(juncturaUrl)))) return null;
-  return { juncturaUrl: juncturaUrl ?? "", issuer, clientId };
+  return { juncturaUrl: juncturaUrl ?? "", issuer, clientId, ...(oidcMode === "same-client" ? { oidcMode } : {}) };
 }
 
 /** Reads /config.json; a missing or broken file falls back to the local defaults. */

@@ -6,8 +6,10 @@ import { readHash } from "./router";
 
 /**
  * Sign-in with Junctura: OIDC Authorization Code + PKCE (S256), written small on purpose.
- * Tokens live in memory only (the refresh token renews the short-lived access token); state and verifier live in sessionStorage just
- * long enough to survive the redirect, and are removed as soon as they are used.
+ * Tokens live in memory only (in the legacy public-client mode a refresh token renews the
+ * short-lived access token; the same-client broker exchanges the code only); state and verifier
+ * live in sessionStorage just long enough to survive the redirect, and are removed as soon as
+ * they are used.
  */
 
 export interface Session {
@@ -84,14 +86,15 @@ const redirectUri = (): string => window.location.origin + window.location.pathn
  * Keycloak endpoints of the Junctura realm, derived from the issuer (no discovery request).
  * The browser goes to the public issuer to sign in and out (the login page keeps its cookies
  * on that host), while the code is redeemed through the portal's own origin, where /identity
- * is proxied: the strict CSP (connect-src 'self') holds and no CORS is involved.
+ * is proxied: the strict CSP (connect-src 'self') holds and no CORS is involved. With the
+ * explicit same-client opt-in, a same-origin backend broker redeems the code instead.
  */
 export function oidcEndpoints(config: PortalConfig, origin: string = window.location.origin): Endpoints {
   const realmPath = new URL(config.issuer).pathname.replace(/\/+$/, "");
   const base = (config.juncturaUrl || origin).replace(/\/+$/, "");
   return {
     authorization: `${config.issuer}/protocol/openid-connect/auth`,
-    token: `${base}${realmPath}/protocol/openid-connect/token`,
+    token: config.oidcMode === "same-client" ? `${origin}/api/auth/token` : `${base}${realmPath}/protocol/openid-connect/token`,
     endSession: `${config.issuer}/protocol/openid-connect/logout`,
   };
 }
@@ -155,11 +158,12 @@ export async function handleCallback(config: PortalConfig): Promise<string | nul
 /** A session from a token response, keeping what a refresh response leaves out. */
 function sessionFrom(value: Record<string, unknown>, previous?: Session): Session {
   const idToken = typeof value.id_token === "string" ? value.id_token : previous?.idToken;
+  const refreshToken = typeof value.refresh_token === "string" ? value.refresh_token : previous?.refreshToken;
   return {
     accessToken: value.access_token as string,
     idToken,
     name: idToken ? jwtName(idToken) : previous?.name,
-    refreshToken: typeof value.refresh_token === "string" ? value.refresh_token : previous?.refreshToken,
+    ...(refreshToken !== undefined ? { refreshToken } : {}),
     expiresAt: expiryOf(value),
   };
 }
@@ -171,8 +175,9 @@ export function expiryOf(value: Record<string, unknown>): number | undefined {
   return seconds.length ? Date.now() + Math.min(...seconds) * 1000 : undefined;
 }
 
-/** Renews the access token with the refresh token; false when there is none or Junctura refuses. */
+/** Renews the access token with the refresh token in legacy public mode; false otherwise, including same-client. */
 export async function refreshSession(config: PortalConfig): Promise<boolean> {
+  if (config.oidcMode === "same-client") return false;
   const current = auth.get();
   if (!current?.refreshToken) return false;
   const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: config.clientId });

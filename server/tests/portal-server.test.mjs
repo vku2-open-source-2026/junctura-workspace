@@ -546,3 +546,47 @@ test("the JWT verifier checks RS256 signatures, iss, exp and azp = health-portal
   await assert.rejects(verifier(token({ ...claims }, "unknown-kid")), /unknown signing key/);
   await assert.rejects(verifier("not-a-token"), /malformed token/);
 });
+
+test("the token broker route is opt-in and runs before authentication", async () => {
+  const calls = [];
+  const provided = deps();
+  provided.verifyToken = async () => {
+    throw new Error("authentication must not run");
+  };
+  provided.redeemToken = async req => {
+    calls.push({ method: req.method, url: req.url });
+    return [418, { error: "teapot" }, { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60" }];
+  };
+
+  await withServer(provided, async base => {
+    const response = await fetch(new URL("/api/auth/token", base), { method: "POST" });
+    assert.equal(response.status, 418);
+    assert.equal(response.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(response.headers.get("cache-control"), "public, max-age=60");
+    assert.deepEqual(await response.json(), { error: "teapot" });
+    assert.deepEqual(calls, [{ method: "POST", url: "/api/auth/token" }]);
+  });
+});
+
+test("without a configured broker /api/auth/token stays a private route", async () => {
+  await withServer(deps(), async base => {
+    const response = await fetch(new URL("/api/auth/token", base), { method: "POST" });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "unauthorized" });
+  });
+});
+
+test("the token broker receives only the exact absolute route", async () => {
+  const calls = [];
+  const provided = deps();
+  provided.redeemToken = async req => {
+    calls.push(req.url);
+    return [200, { ok: true }];
+  };
+
+  await withServer(provided, async base => {
+    await fetch(new URL("/api/auth/token?next=1", base), { method: "POST" });
+    await fetch(new URL("/api/auth/token/", base), { method: "POST", headers: AUTH });
+    assert.deepEqual(calls, ["/api/auth/token?next=1"]);
+  });
+});

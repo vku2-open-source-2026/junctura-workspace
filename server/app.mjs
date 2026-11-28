@@ -88,7 +88,7 @@ async function readFileBody(req) {
 }
 
 /** The route returns a response, or throws. `token` is the caller's access token. */
-export function createApp({ verifyToken, junctura, fetchExecution, staffFor, packProjection, now = () => new Date() }) {
+export function createApp({ verifyToken, junctura, fetchExecution, staffFor, redeemToken, packProjection, now = () => new Date() }) {
   async function authenticate(req, url) {
     const match = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ""));
     if (!match) throw new ApiError(401, "unauthorized");
@@ -190,6 +190,10 @@ export function createApp({ verifyToken, junctura, fetchExecution, staffFor, pac
         if (req.method === "GET") return send(res, 200, packProjection);
         return send(res, 404, { error: "not_found" });
       }
+      if (redeemToken && url.pathname === "/api/auth/token") {
+        return send(res, ...(await redeemToken(req)));
+      }
+
       const caller = await authenticate(req, url);
       const outcome = await route(req, url, caller);
       if (!outcome) return send(res, 404, { error: "not_found" });
