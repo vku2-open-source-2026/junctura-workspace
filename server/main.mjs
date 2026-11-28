@@ -17,6 +17,7 @@ import { createApp } from "./app.mjs";
 import { createVerifier } from "./jwt.mjs";
 import { readPackProjection } from "./pack-projection.mjs";
 import { createStaffFor } from "./staff.mjs";
+import { createTokenRedemption } from "./oidc-token.mjs";
 
 const WEB_CLIENT_ID = "health-portal-web";
 const DEFAULT_PORT = 5190;
@@ -45,15 +46,44 @@ if (!issuer) {
 }
 const keysBase = (env.OIDC_KEYS_URL || issuer).replace(/\/+$/, "");
 
+const backendClientId = required("JUNCTURA_APP_CLIENT_ID");
+const backendClientSecret = required("JUNCTURA_APP_CLIENT_SECRET");
+
 let junctura;
 try {
-  junctura = createJuncturaClient({ baseUrl: juncturaUrl, clientId: required("JUNCTURA_APP_CLIENT_ID"), clientSecret: required("JUNCTURA_APP_CLIENT_SECRET") });
+  junctura = createJuncturaClient({ baseUrl: juncturaUrl, clientId: backendClientId, clientSecret: backendClientSecret });
 } catch (error) {
   console.error(`Cannot create the Junctura client: ${error.message}`);
   process.exit(1);
 }
 
-const verifier = createVerifier({ issuer, keysBase, clientId: WEB_CLIENT_ID });
+const portalMode = env.OIDC_PORTAL_MODE;
+if (portalMode !== undefined && portalMode !== "same-client") {
+  console.error('OIDC_PORTAL_MODE must be "same-client" when set');
+  process.exit(1);
+}
+
+let redeemToken;
+let verifier;
+if (portalMode === "same-client") {
+  const portalOrigin = required("OIDC_PORTAL_ORIGIN");
+  const portalRedirectUri = required("OIDC_PORTAL_REDIRECT_URI");
+  try {
+    redeemToken = createTokenRedemption({
+      issuer,
+      origin: portalOrigin,
+      redirectUri: portalRedirectUri,
+      clientId: backendClientId,
+      clientSecret: backendClientSecret,
+    });
+  } catch (error) {
+    console.error(`Cannot create the token redemption broker: ${error.message}`);
+    process.exit(1);
+  }
+  verifier = createVerifier({ issuer, keysBase, clientId: backendClientId });
+} else {
+  verifier = createVerifier({ issuer, keysBase, clientId: WEB_CLIENT_ID });
+}
 
 // The pack the portal presents: one industry pack directory on disk, read with
 // the shared preflight reader. Deployment chooses the pack by configuration
@@ -108,7 +138,7 @@ const fetchExecution = async (executionId, token) => {
   }
 };
 
-const server = createServer(createApp({ verifyToken: verifier, junctura, fetchExecution, staffFor, packProjection }));
+const server = createServer(createApp({ verifyToken: verifier, junctura, fetchExecution, staffFor, packProjection, redeemToken }));
 server.listen(port, host, () => {
   console.log(`Junctura Workspace portal API listening on http://${host}:${server.address().port}`);
 });

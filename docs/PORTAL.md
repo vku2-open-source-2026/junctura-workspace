@@ -36,11 +36,24 @@ Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junc
 | --- | --- |
 | `PORT`, `HOST` | Lắng nghe, mặc định `127.0.0.1:5190` |
 | `JUNCTURA_URL` | Gateway Tầng 1 (HTTPS, hoặc HTTP loopback khi dev) |
-| `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET` | Client backend của ứng dụng `junctura-health-portal` (do `demo:setup` của Junctura Health cấp) |
+| `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET` | Client backend của ứng dụng `junctura-health-portal` (do `demo:setup` của Junctura Health cấp); ở chế độ `same-client`, broker dùng chính client này ở phía máy chủ để đổi mã và làm mới token |
+| `OIDC_PORTAL_MODE` | Tuỳ chọn: đặt đúng `same-client` để trình duyệt đổi mã và làm mới token qua broker cùng origin `POST /api/auth/token`. **Bỏ hẳn biến** để giữ chế độ public client mặc định (gọi endpoint token của issuer qua proxy `/identity`). Mọi giá trị đã đặt khác `same-client`, kể cả chuỗi rỗng, là lỗi cấu hình và backend dừng ngay khi khởi động. |
+| `OIDC_PORTAL_ORIGIN` | Bắt buộc khi bật `same-client`: origin chính xác của cổng (ví dụ `https://health.example.org`, không kèm đường dẫn); request tới broker phải có `Origin` khớp chính xác |
+| `OIDC_PORTAL_REDIRECT_URI` | Bắt buộc khi bật `same-client`: redirect URI chính xác đã đăng ký với client, khớp URL trình duyệt quay về sau đăng nhập (ví dụ `https://health.example.org/`) |
 | `JUNCTURA_TENANT` | Tenant mà danh tính đã xác minh phải thuộc (tệp env do `demo:setup` tạo đã mang sẵn) |
 | `JUNCTURA_PACK_DIR` | Thư mục gói đã cài để phục vụ `GET /api/pack`; mặc định `examples/packs/health`, đổi thành `examples/packs/education` (hoặc gói khác theo đặc tả) để trình bày gói khác. Gói hỏng làm backend dừng. |
 | `OIDC_ISSUER` | Issuer mà token phải mang trong `iss` (mặc định lấy `JUNCTURA_ISSUER`) |
 | `OIDC_KEYS_URL` | Tuỳ chọn: nơi lấy JWKS khi issuer không truy cập được từ trong container |
+
+Chế độ `same-client` là tuỳ chọn bật rõ ràng, không phải mặc định: `OIDC_ISSUER` (hoặc `JUNCTURA_ISSUER`) vẫn là issuer dùng cho đăng nhập/đăng xuất, `JUNCTURA_APP_CLIENT_ID`/`JUNCTURA_APP_CLIENT_SECRET` là client backend đã đăng ký, và `OIDC_PORTAL_REDIRECT_URI` phải trùng khớp URL quay về của cổng. Không có secret nào trong `config.json` hay bundle trình duyệt; trình duyệt chỉ gọi broker cùng origin.
+
+Tệp công khai `config.json` vẫn giữ `juncturaUrl`, `issuer`, `clientId`. **Thiếu `oidcMode` là hợp lệ** và giữ chế độ public client cũ (bản demo desktop dùng `clientId: "health-portal-web"` và không đặt `oidcMode`). Bật broker bằng cách thêm `"oidcMode": "same-client"`. Ở chế độ này, `clientId` công khai phải trùng **chính xác** `JUNCTURA_APP_CLIENT_ID`, `issuer` phải trùng **chính xác** `OIDC_ISSUER`, và client confidential đã đăng ký phải hỗ trợ luồng authorization-code + PKCE tiêu chuẩn cùng thông tin đăng nhập service account, với redirect URI chính xác. Một giá trị `oidcMode` sai hình dạng (không phải `undefined` hay `"same-client"`) làm giao diện coi `config.json` là hỏng và rơi về cấu hình mặc định như trước.
+
+Thiết lập cho người vận hành (không đưa credential vào trình duyệt):
+
+1. Trong tệp env hiện có (`.junctura/portal-api.env` khi dev, hoặc tệp do `PORTAL_API_ENV_FILE` chỉ định cho Compose), đặt `OIDC_PORTAL_MODE=same-client`, `OIDC_PORTAL_ORIGIN` và `OIDC_PORTAL_REDIRECT_URI`; giữ `JUNCTURA_APP_CLIENT_ID`/`JUNCTURA_APP_CLIENT_SECRET` và `OIDC_ISSUER` (hoặc `JUNCTURA_ISSUER`) trùng với client/issuer đã đăng ký.
+2. Trong `config.json` công khai, đặt `clientId` đúng bằng `JUNCTURA_APP_CLIENT_ID`, `issuer` đúng bằng `OIDC_ISSUER` và thêm `"oidcMode": "same-client"`; bỏ `oidcMode` để giữ public client cũ.
+3. Đăng ký redirect URI chính xác đó với client confidential và bảo đảm client hỗ trợ authorization-code + PKCE cùng service account credentials.
 
 ## Chạy dev
 
