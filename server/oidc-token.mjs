@@ -6,7 +6,6 @@ const TOKEN_PATH = '/protocol/openid-connect/token';
 const REQUEST_PATH = '/api/auth/token';
 const FORM_TYPE = 'application/x-www-form-urlencoded';
 const AUTH_CODE_FIELDS = new Set(['grant_type', 'code', 'code_verifier', 'redirect_uri', 'client_id']);
-const REFRESH_FIELDS = new Set(['grant_type', 'refresh_token', 'client_id']);
 const PKCE_VERIFIER = /^[A-Za-z0-9\-._~]{43,128}$/;
 
 function json(status, body, headers) {
@@ -121,7 +120,7 @@ function mapTokenResponse(value) {
     return null;
   }
 
-  const { access_token, token_type, expires_in, refresh_expires_in, refresh_token, id_token, scope } = value;
+  const { access_token, token_type, expires_in, id_token, scope } = value;
 
   if (!isNonEmptyString(access_token) || !isNonEmptyString(token_type) || token_type.toLowerCase() !== 'bearer') {
     return null;
@@ -141,10 +140,6 @@ function mapTokenResponse(value) {
   const expiresIn = seconds(expires_in);
   if (expiresIn !== undefined) tokens.expires_in = expiresIn;
 
-  const refreshExpiresIn = seconds(refresh_expires_in);
-  if (refreshExpiresIn !== undefined) tokens.refresh_expires_in = refreshExpiresIn;
-
-  if (isNonEmptyString(refresh_token)) tokens.refresh_token = refresh_token;
   if (isNonEmptyString(id_token)) tokens.id_token = id_token;
   if (isNonEmptyString(scope)) tokens.scope = scope;
 
@@ -254,13 +249,12 @@ export function createTokenRedemption(config = {}) {
       return fail(400, 'invalid_request');
     }
 
-    if (grantType !== 'authorization_code' && grantType !== 'refresh_token') {
+    if (grantType !== 'authorization_code') {
       return fail(400, 'unsupported_grant_type');
     }
 
-    const allowed = grantType === 'authorization_code' ? AUTH_CODE_FIELDS : REFRESH_FIELDS;
     for (const key of fields.keys()) {
-      if (!allowed.has(key)) {
+      if (!AUTH_CODE_FIELDS.has(key)) {
         return fail(400, 'invalid_request');
       }
     }
@@ -269,32 +263,22 @@ export function createTokenRedemption(config = {}) {
       return fail(400, 'invalid_client');
     }
 
+    const code = fields.get('code');
+    const verifier = fields.get('code_verifier');
+    const redirectValue = fields.get('redirect_uri');
+
+    if (!isNonEmptyString(code) || !isNonEmptyString(verifier) || !isNonEmptyString(redirectValue)) {
+      return fail(400, 'invalid_request');
+    }
+    if (code.length > 4096 || !PKCE_VERIFIER.test(verifier) || redirectValue !== redirectUri) {
+      return fail(400, 'invalid_request');
+    }
+
     const upstream = new URLSearchParams();
     upstream.set('grant_type', grantType);
-
-    if (grantType === 'authorization_code') {
-      const code = fields.get('code');
-      const verifier = fields.get('code_verifier');
-      const redirectValue = fields.get('redirect_uri');
-
-      if (!isNonEmptyString(code) || !isNonEmptyString(verifier) || !isNonEmptyString(redirectValue)) {
-        return fail(400, 'invalid_request');
-      }
-      if (code.length > 4096 || !PKCE_VERIFIER.test(verifier) || redirectValue !== redirectUri) {
-        return fail(400, 'invalid_request');
-      }
-
-      upstream.set('code', code);
-      upstream.set('code_verifier', verifier);
-      upstream.set('redirect_uri', redirectValue);
-    } else {
-      const refreshToken = fields.get('refresh_token');
-      if (!isNonEmptyString(refreshToken) || refreshToken.length > 8192) {
-        return fail(400, 'invalid_request');
-      }
-
-      upstream.set('refresh_token', refreshToken);
-    }
+    upstream.set('code', code);
+    upstream.set('code_verifier', verifier);
+    upstream.set('redirect_uri', redirectValue);
 
     let res;
     try {

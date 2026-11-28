@@ -77,7 +77,7 @@ const AUTHORIZATION_CODE_BODY = {
   redirect_uri: REDIRECT_URI,
 };
 
-const REFRESH_TOKEN_BODY = {
+const REFRESH_GRANT_BODY = {
   grant_type: 'refresh_token',
   refresh_token: 'refresh-token-1',
 };
@@ -88,6 +88,7 @@ test('authorization_code grant maps only safe token output', async () => {
     token_type: 'Bearer',
     expires_in: 300,
     refresh_token: 'refresh-1',
+    refresh_expires_in: 1800,
     id_token: 'id-1',
     scope: 'openid profile',
     session_state: 'must-not-leak',
@@ -103,7 +104,6 @@ test('authorization_code grant maps only safe token output', async () => {
     access_token: 'access-1',
     token_type: 'Bearer',
     expires_in: 300,
-    refresh_token: 'refresh-1',
     id_token: 'id-1',
     scope: 'openid profile',
   });
@@ -122,35 +122,19 @@ test('authorization_code grant maps only safe token output', async () => {
   const sent = new URLSearchParams(calls[0].init.body);
   assert.deepEqual(Object.fromEntries(sent), AUTHORIZATION_CODE_BODY);
   assert.equal(sent.has('client_id'), false);
+  assert.equal(sent.has('refresh_token'), false);
 });
 
-test('refresh_token grant sends only refresh_token fields', async () => {
-  const { fetcher, calls } = captureFetcher(() => tokenResponse({
-    access_token: 'access-2',
-    token_type: 'Bearer',
-    expires_in: 120,
-    refresh_token: 'refresh-2',
-    extra: 'dropped',
-  }));
+test('rejects refresh_token grants without calling upstream', async () => {
+  const { fetcher, calls } = captureFetcher(() => tokenResponse({}));
 
   const [status, body] = await makeRedeem(fetcher)(
-    request({ body: form(REFRESH_TOKEN_BODY) }),
+    request({ body: form(REFRESH_GRANT_BODY) }),
   );
 
-  assert.equal(status, 200);
-  assert.deepEqual(body, {
-    access_token: 'access-2',
-    token_type: 'Bearer',
-    expires_in: 120,
-    refresh_token: 'refresh-2',
-  });
-
-  const sent = new URLSearchParams(calls[0].init.body);
-  assert.deepEqual(Object.fromEntries(sent), REFRESH_TOKEN_BODY);
-  assert.equal(sent.has('code'), false);
-  assert.equal(sent.has('code_verifier'), false);
-  assert.equal(sent.has('redirect_uri'), false);
-  assert.equal(sent.has('client_id'), false);
+  assert.equal(status, 400);
+  assert.deepEqual(body, { error: 'unsupported_grant_type' });
+  assert.equal(calls.length, 0);
 });
 
 test('rejects a different portal Origin without calling upstream', async () => {
@@ -361,7 +345,7 @@ test('treats a fetcher redirect rejection as upstream unavailable', async () => 
   };
 
   const [status, body] = await makeRedeem(fetcher)(
-    request({ body: form(REFRESH_TOKEN_BODY) }),
+    request({ body: form(AUTHORIZATION_CODE_BODY) }),
   );
 
   assert.equal(status, 502);
@@ -389,7 +373,7 @@ test('treats upstream token payloads without an access token as invalid', async 
   }));
 
   const [status, body] = await makeRedeem(fetcher)(
-    request({ body: form(REFRESH_TOKEN_BODY) }),
+    request({ body: form(AUTHORIZATION_CODE_BODY) }),
   );
 
   assert.equal(status, 502);
@@ -406,7 +390,7 @@ test('accepts a loopback HTTP issuer for local development', async () => {
     issuer: 'http://127.0.0.1:8080/realms/development',
   });
 
-  const [status] = await redeem(request({ body: form(REFRESH_TOKEN_BODY) }));
+  const [status] = await redeem(request({ body: form(AUTHORIZATION_CODE_BODY) }));
 
   assert.equal(status, 200);
   assert.equal(calls[0].url, 'http://127.0.0.1:8080/realms/development/protocol/openid-connect/token');
@@ -453,16 +437,17 @@ test('rejects a redirect URI with a query or fragment', () => {
   }
 });
 
-test('returns refresh_expires_in and a valid Bearer token type', async () => {
+test('returns access expiry and a valid Bearer token type without refresh fields', async () => {
   const { fetcher } = captureFetcher(() => tokenResponse({
     access_token: 'access-4',
     token_type: 'bearer',
     expires_in: 300,
+    refresh_token: 'refresh-4',
     refresh_expires_in: 1800,
   }));
 
   const [status, body] = await makeRedeem(fetcher)(
-    request({ body: form(REFRESH_TOKEN_BODY) }),
+    request({ body: form(AUTHORIZATION_CODE_BODY) }),
   );
 
   assert.equal(status, 200);
@@ -470,7 +455,6 @@ test('returns refresh_expires_in and a valid Bearer token type', async () => {
     access_token: 'access-4',
     token_type: 'Bearer',
     expires_in: 300,
-    refresh_expires_in: 1800,
   });
 });
 
@@ -481,7 +465,7 @@ test('rejects upstream token types that are not Bearer', async () => {
   }));
 
   const [status, body] = await makeRedeem(fetcher)(
-    request({ body: form(REFRESH_TOKEN_BODY) }),
+    request({ body: form(AUTHORIZATION_CODE_BODY) }),
   );
 
   assert.equal(status, 502);

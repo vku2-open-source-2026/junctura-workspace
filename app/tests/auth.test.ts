@@ -65,7 +65,7 @@ describe("OIDC endpoints", () => {
 });
 
 describe("same-client broker", () => {
-  it("redeems the callback and refreshes through the same-origin broker with the configured client", async () => {
+  it("redeems the callback through the same-origin broker without keeping a refresh token", async () => {
     const origin = window.location.origin;
     const state = "state-1";
     window.history.replaceState(null, "", `/?code=code-1&state=${state}`);
@@ -73,17 +73,25 @@ describe("same-client broker", () => {
     const calls: Array<{ url: string; body: URLSearchParams }> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ url: String(input), body: new URLSearchParams(String(init?.body ?? "")) });
-      return { ok: true, json: async () => ({ access_token: "access-1", refresh_token: "refresh-1", expires_in: 300 }) } as Response;
+      return { ok: true, json: async () => ({ access_token: "access-1", expires_in: 300 }) } as Response;
     });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(handleCallback(SAME_CLIENT_CONFIG)).resolves.toBe("#/lam-viec");
+    expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe(`${origin}/api/auth/token`);
+    expect(calls[0]?.body.get("grant_type")).toBe("authorization_code");
     expect(calls[0]?.body.get("client_id")).toBe("portal-same-client");
+    expect(auth.get()).toMatchObject({ accessToken: "access-1", expiresAt: expect.any(Number) });
+    expect(auth.get()).not.toHaveProperty("refreshToken");
+  });
+  it("does not attempt a broker refresh even when the session anomalously carries a refresh token", async () => {
+    auth.set({ accessToken: "access-1", refreshToken: "refresh-1", expiresAt: Date.now() + 300_000 });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(refreshSession(SAME_CLIENT_CONFIG)).resolves.toBe(true);
-    expect(calls[1]?.url).toBe(`${origin}/api/auth/token`);
-    expect(calls[1]?.body.get("client_id")).toBe("portal-same-client");
+    await expect(refreshSession(SAME_CLIENT_CONFIG)).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
   it("still rejects a callback whose state does not match", async () => {
     window.history.replaceState(null, "", "/?code=code-1&state=wrong");
@@ -92,6 +100,25 @@ describe("same-client broker", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(handleCallback(SAME_CLIENT_CONFIG)).rejects.toThrow("state_mismatch");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("legacy public refresh", () => {
+  it("still renews the access token with the refresh token through the issuer token endpoint", async () => {
+    auth.set({ accessToken: "access-1", refreshToken: "refresh-1", expiresAt: Date.now() + 300_000 });
+    const calls: Array<{ url: string; body: URLSearchParams }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), body: new URLSearchParams(String(init?.body ?? "")) });
+      return { ok: true, json: async () => ({ access_token: "access-2", refresh_token: "refresh-2", expires_in: 300 }) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshSession(PUBLIC_CONFIG)).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${window.location.origin}/identity/realms/junctura/protocol/openid-connect/token`);
+    expect(calls[0]?.body.get("grant_type")).toBe("refresh_token");
+    expect(calls[0]?.body.get("refresh_token")).toBe("refresh-1");
+    expect(auth.get()).toMatchObject({ accessToken: "access-2", refreshToken: "refresh-2" });
   });
 });
 

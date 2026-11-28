@@ -6,7 +6,7 @@
 Ứng dụng giao diện của **Tầng 2**, không gian làm việc chung cho tổ chức nhiều đơn vị. Gồm hai phần:
 
 - **Phần công khai** (`#/`, `#/hop-dong`, `#/quy-trinh`, `#/co-so`): Tầng 2 là gì, **thư viện loại hồ sơ** của gói đang cài (`#/hop-dong`, từng loại có sơ đồ quy trình, biểu mẫu, nhóm được phép và hạn xử lý), quy trình BPMN (`#/quy-trinh`) và các loại đơn vị (`#/co-so`). Nội dung lấy lúc chạy từ `GET /api/pack` — không nhãn gói nào được ghim vào bản build.
-- **Không gian làm việc** (cần đăng nhập Junctura, OIDC + PKCE, client `health-portal-web`), theo thứ tự H → P → D:
+- **Không gian làm việc** (cần đăng nhập Junctura, OIDC + PKCE; client `health-portal-web` ở chế độ mặc định, hoặc client ứng dụng đã đăng ký ở `same-client`), theo thứ tự H → P → D:
   - **H · Con người số, Làm việc** (`#/lam-viec`): việc hôm nay của đơn vị, bảng tin của đơn vị điều phối, danh bạ liên thông (`/v1/directory`).
   - **P · Quy trình số, Hồ sơ** (`#/ho-so`): mở hồ sơ theo biểu mẫu mở của gói, hoàn tất bước, trao đổi và tệp đính kèm. Chạy trên API workflow của Tầng 1; hồ sơ không chứa dữ liệu chuyên môn.
   - **D · Dữ liệu số, Điều hành** (`#/dieu-hanh`): số liệu sống: hồ sơ chờ theo đơn vị, thời gian xử lý, trao đổi dữ liệu (nhật ký chuỗi băm của Tầng 1), bản đồ dữ liệu của từng đơn vị (chỉ số đếm, không nội dung), luồng quy trình giữa các loại đơn vị.
@@ -30,14 +30,14 @@ Mỗi tài khoản nhân viên phải được thêm vào đơn vị của mình
 
 ## Backend (`server/`)
 
-Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junctura/server-client`, không framework): lưu bản ghi **bảng tin** (`bang-tin`), **ghi chú** và **tệp đính kèm trên hồ sơ liên thông** (`ghi-chu`, `tep-dinh-kem`) vào Tầng 1 như một ứng dụng Junctura thật (client backend `health-portal-backend`; tệp lưu bằng `/v2/objects`, metadata là bản ghi `/v2/data`). Xác thực bằng token người dùng của client web `health-portal-web` (RS256 qua JWKS, kiểm `iss`/`exp`/`azp`); người dùng không phải nhân viên bị từ chối (403), tác giả luôn lấy từ token.
+Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junctura/server-client`, không framework): lưu bản ghi **bảng tin** (`bang-tin`), **ghi chú** và **tệp đính kèm trên hồ sơ liên thông** (`ghi-chu`, `tep-dinh-kem`) vào Tầng 1 như một ứng dụng Junctura thật (client backend `health-portal-backend`; tệp lưu bằng `/v2/objects`, metadata là bản ghi `/v2/data`). Xác thực bằng token người dùng (RS256 qua JWKS, kiểm `iss`/`exp`/`azp`): `health-portal-web` ở chế độ mặc định, hoặc client ứng dụng đã đăng ký khi bật `same-client`; người dùng không phải nhân viên bị từ chối (403), tác giả luôn lấy từ token.
 
 | Biến môi trường | Ý nghĩa |
 | --- | --- |
 | `PORT`, `HOST` | Lắng nghe, mặc định `127.0.0.1:5190` |
 | `JUNCTURA_URL` | Gateway Tầng 1 (HTTPS, hoặc HTTP loopback khi dev) |
-| `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET` | Client backend của ứng dụng `junctura-health-portal` (do `demo:setup` của Junctura Health cấp); ở chế độ `same-client`, broker dùng chính client này ở phía máy chủ để đổi mã và làm mới token |
-| `OIDC_PORTAL_MODE` | Tuỳ chọn: đặt đúng `same-client` để trình duyệt đổi mã và làm mới token qua broker cùng origin `POST /api/auth/token`. **Bỏ hẳn biến** để giữ chế độ public client mặc định (gọi endpoint token của issuer qua proxy `/identity`). Mọi giá trị đã đặt khác `same-client`, kể cả chuỗi rỗng, là lỗi cấu hình và backend dừng ngay khi khởi động. |
+| `JUNCTURA_APP_CLIENT_ID`, `JUNCTURA_APP_CLIENT_SECRET` | Client backend của ứng dụng `junctura-health-portal` (do `demo:setup` của Junctura Health cấp); ở chế độ `same-client`, broker dùng chính client này ở phía máy chủ để đổi mã authorization code |
+| `OIDC_PORTAL_MODE` | Tuỳ chọn: đặt đúng `same-client` để trình duyệt đổi mã authorization code qua broker cùng origin `POST /api/auth/token`. **Bỏ hẳn biến** để giữ chế độ public client mặc định (gọi endpoint token của issuer qua proxy `/identity`). Mọi giá trị đã đặt khác `same-client`, kể cả chuỗi rỗng, là lỗi cấu hình và backend dừng ngay khi khởi động. |
 | `OIDC_PORTAL_ORIGIN` | Bắt buộc khi bật `same-client`: origin chính xác của cổng (ví dụ `https://health.example.org`, không kèm đường dẫn); request tới broker phải có `Origin` khớp chính xác |
 | `OIDC_PORTAL_REDIRECT_URI` | Bắt buộc khi bật `same-client`: redirect URI chính xác đã đăng ký với client, khớp URL trình duyệt quay về sau đăng nhập (ví dụ `https://health.example.org/`) |
 | `JUNCTURA_TENANT` | Tenant mà danh tính đã xác minh phải thuộc (tệp env do `demo:setup` tạo đã mang sẵn) |
@@ -47,7 +47,9 @@ Backend nhỏ của Cổng (`/api`, cùng origin, Node 24 + `node:http` + `@junc
 
 Chế độ `same-client` là tuỳ chọn bật rõ ràng, không phải mặc định: `OIDC_ISSUER` (hoặc `JUNCTURA_ISSUER`) vẫn là issuer dùng cho đăng nhập/đăng xuất, `JUNCTURA_APP_CLIENT_ID`/`JUNCTURA_APP_CLIENT_SECRET` là client backend đã đăng ký, và `OIDC_PORTAL_REDIRECT_URI` phải trùng khớp URL quay về của cổng. Không có secret nào trong `config.json` hay bundle trình duyệt; trình duyệt chỉ gọi broker cùng origin.
 
-Tệp công khai `config.json` vẫn giữ `juncturaUrl`, `issuer`, `clientId`. **Thiếu `oidcMode` là hợp lệ** và giữ chế độ public client cũ (bản demo desktop dùng `clientId: "health-portal-web"` và không đặt `oidcMode`). Bật broker bằng cách thêm `"oidcMode": "same-client"`. Ở chế độ này, `clientId` công khai phải trùng **chính xác** `JUNCTURA_APP_CLIENT_ID`, `issuer` phải trùng **chính xác** `OIDC_ISSUER`, và client confidential đã đăng ký phải hỗ trợ luồng authorization-code + PKCE tiêu chuẩn cùng thông tin đăng nhập service account, với redirect URI chính xác. Một giá trị `oidcMode` sai hình dạng (không phải `undefined` hay `"same-client"`) làm giao diện coi `config.json` là hỏng và rơi về cấu hình mặc định như trước.
+Broker chỉ nhận grant `authorization_code` + PKCE (các grant khác, kể cả `refresh_token`, bị từ chối 400 `unsupported_grant_type`) và chỉ đổi mã; nó không trả `refresh_token` hay `refresh_expires_in` kể cả khi upstream có. DX-OS ổn định cố ý không cấp refresh token cho client ứng dụng đã đăng ký (`use.refresh.tokens=false`) để giữ chính sách grant/assignment đã áp dụng, nên không có cơ chế làm mới ẩn: broker trả access token ngắn hạn kèm thời hạn (`expires_in`) và `id_token` dùng cho đăng xuất. Khi access token hết hạn, yêu cầu API nhận 401, phiên trong bộ nhớ bị xoá và cổng trình bày đăng nhập lại — không tự thử làm mới. Phạm vi này không thêm scope API hay thay đổi API nào.
+
+Tệp công khai `config.json` vẫn giữ `juncturaUrl`, `issuer`, `clientId`. **Thiếu `oidcMode` là hợp lệ** và giữ chế độ public client cũ (bản demo desktop dùng `clientId: "health-portal-web"` và không đặt `oidcMode`). Bật broker bằng cách thêm `"oidcMode": "same-client"`. Ở chế độ này, `clientId` công khai phải trùng **chính xác** `JUNCTURA_APP_CLIENT_ID`, `issuer` phải trùng **chính xác** `OIDC_ISSUER`, và client confidential đã đăng ký phải hỗ trợ luồng authorization-code + PKCE tiêu chuẩn cùng thông tin đăng nhập service account, với redirect URI chính xác; việc cấp refresh token cho client ứng dụng đã đăng ký vẫn theo hành vi đăng ký hiện có của DX-OS (không bật thêm). Một giá trị `oidcMode` sai hình dạng (không phải `undefined` hay `"same-client"`) làm giao diện coi `config.json` là hỏng và rơi về cấu hình mặc định như trước.
 
 Thiết lập cho người vận hành (không đưa credential vào trình duyệt):
 
